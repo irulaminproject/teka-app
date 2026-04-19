@@ -9,7 +9,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="js/config.js"></script>
 </head>
-<body class="bg-gray-900 text-white min-h-screen flex flex-col items-center p-4 font-sans">
+<body class="bg-gray-900 text-white min-h-screen flex flex-col items-center p-4">
 
     <div class="w-full max-w-md bg-gray-800 rounded-3xl p-6 shadow-2xl border border-gray-700 mt-4">
         <div class="text-center mb-8">
@@ -17,60 +17,84 @@
             <p class="text-gray-400 text-xs tracking-widest uppercase">Delivery Purbolinggo</p>
         </div>
 
-        <div class="bg-gray-700 rounded-2xl p-5 border border-gray-600 mb-6">
-            <h2 class="text-xl font-bold">Beras Premium 5kg</h2>
+        <div class="bg-gray-700 rounded-2xl p-5 border border-gray-600 mb-6 text-center">
+            <h2 class="text-xl font-bold">Paket Sembako Hemat</h2>
             <p class="text-2xl font-black text-green-400 mt-2">Rp 72.000</p>
         </div>
 
-        <div id="actionArea">
-            <button onclick="getLocation()" id="gpsBtn" class="w-full bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-black py-5 rounded-2xl shadow-xl transition-all flex justify-center items-center gap-3">
-                📍 AKTIFKAN GPS & PESAN
-            </button>
-        </div>
+        <button onclick="handleOrderClick(72000, 'c8e88263-42ae-464f-99d2-eafa72183af8')" 
+                id="orderBtn" 
+                class="w-full bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-black py-5 rounded-2xl shadow-xl flex justify-center items-center gap-3 transition-transform active:scale-95">
+            <span>🚀 PESAN SEKARANG</span>
+        </button>
 
         <div id="loaderArea" class="hidden text-center py-5">
             <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-yellow-400 mx-auto"></div>
-            <p class="text-yellow-400 mt-4 font-bold text-sm">MENGUNCI KOORDINAT...</p>
+            <p class="text-yellow-400 mt-4 font-bold text-sm animate-pulse">MENCARI KOORDINAT...</p>
         </div>
     </div>
 
     <script>
+        // Inisialisasi
         const tg = window.Telegram.WebApp;
         const supabaseClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY);
         
         tg.ready();
         tg.expand();
 
-        function getLocation() {
-            const gpsBtn = document.getElementById('gpsBtn');
+        function handleOrderClick(price, storeId) {
+            const btn = document.getElementById('orderBtn');
             const loader = document.getElementById('loaderArea');
 
-            gpsBtn.classList.add('hidden');
+            // 1. Ganti UI ke Loading
+            btn.classList.add('hidden');
             loader.classList.remove('hidden');
 
-            // Minta lokasi langsung lewat fitur WebApp Telegram
-            tg.getLocation((data) => {
-                if (data && data.latitude) {
-                    sendOrder(data.latitude, data.longitude);
-                } else {
-                    // Jika fitur Telegram gagal, pakai cadangan Browser
-                    navigator.geolocation.getCurrentPosition(
-                        (pos) => sendOrder(pos.coords.latitude, pos.coords.longitude),
-                        (err) => {
-                            alert("Gagal ambil lokasi. Pastikan GPS HP Aktif & Izin Telegram diizinkan.");
-                            resetUI();
-                        },
-                        { enableHighAccuracy: true }
-                    );
-                }
-            });
+            console.log("Memulai pencarian lokasi...");
+
+            // 2. Timer Cadangan (Jika Telegram diam lebih dari 3 detik)
+            const backupTimer = setTimeout(() => {
+                console.log("Telegram diam, beralih ke Browser GPS...");
+                fallbackToBrowser(price, storeId);
+            }, 3000);
+
+            // 3. Coba pakai cara Native Telegram
+            try {
+                tg.getLocation((data) => {
+                    if (data && data.latitude) {
+                        clearTimeout(backupTimer);
+                        console.log("Lokasi didapat dari Telegram");
+                        sendData(price, storeId, data.latitude, data.longitude);
+                    }
+                });
+            } catch (err) {
+                console.error("Metode tg.getLocation tidak didukung");
+            }
         }
 
-        async function sendOrder(lat, lng) {
+        function fallbackToBrowser(price, storeId) {
+            if ("geolocation" in navigator) {
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                        sendData(price, storeId, pos.coords.latitude, pos.coords.longitude);
+                    },
+                    (err) => {
+                        alert("Gagal ambil lokasi. Pastikan GPS HP nyala dan Izin Browser diberikan.");
+                        resetUI();
+                    },
+                    { enableHighAccuracy: true, timeout: 10000 }
+                );
+            } else {
+                alert("Browser tidak mendukung GPS.");
+                resetUI();
+            }
+        }
+
+        async function sendData(price, storeId, lat, lng) {
             try {
                 const { error } = await supabaseClient.from('orders').insert([{ 
-                    total_price: 72000, 
-                    store_id: 'c8e88263-42ae-464f-99d2-eafa72183af8', 
+                    total_price: price, 
+                    store_id: storeId, 
                     dest_latitude: lat, 
                     dest_longitude: lng 
                 }]);
@@ -79,18 +103,18 @@
 
                 tg.showPopup({
                     title: 'BERHASIL!',
-                    message: 'Orderan terkirim. Kurir akan segera meluncur.',
+                    message: 'Pesanan terkirim ke kurir.',
                     buttons: [{type: 'close'}]
                 }, () => tg.close());
 
             } catch (err) {
-                alert("Error: " + err.message);
+                alert("Gagal simpan: " + err.message);
                 resetUI();
             }
         }
 
         function resetUI() {
-            document.getElementById('gpsBtn').classList.remove('hidden');
+            document.getElementById('orderBtn').classList.remove('hidden');
             document.getElementById('loaderArea').classList.add('hidden');
         }
     </script>
