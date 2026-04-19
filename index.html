@@ -3,63 +3,126 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TEKA-App | DINDA INKA SHOP</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>TEKA-App | Dinda Inka Shop PBL</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
     <script src="js/config.js"></script>
+    <style>
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 2s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
 </head>
-<body class="bg-gray-50 p-4">
-    <div class="max-w-md mx-auto">
-        <div class="bg-blue-600 p-6 rounded-3xl text-white mb-6 shadow-lg">
-            <h1 class="text-xl font-bold italic">TEKA<span class="text-yellow-400">APP</span></h1>
-            <p class="text-xs opacity-80">Pesan Sembako Delivery Purbolinggo</p>
-        </div>
+<body class="bg-gray-100 min-h-screen flex flex-col items-center p-4">
 
-        <div class="bg-white p-4 rounded-3xl border shadow-sm flex items-center justify-between">
-            <div>
-                <h3 class="font-bold text-slate-800">Beras Premium 5kg</h3>
-                <p class="text-blue-600 font-bold">Rp72.000</p>
-            </div>
-            <button onclick="orderNow(72000, 'c8e88263-42ae-464f-99d2-eafa72183af8')" 
-                    class="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold text-xs shadow-md active:scale-95 transition-all">
-                BELI
-            </button>
-        </div>
+    <div class="bg-white w-full max-w-md rounded-xl shadow-lg p-6 mb-4 text-center">
+        <h1 class="text-2xl font-bold text-blue-600">DINDA INKA SHOP PBL</h1>
+        <p class="text-gray-500 text-sm">Purbolinggo, Lampung Timur</p>
     </div>
 
-    <div id="loader" class="fixed inset-0 bg-black/80 hidden flex flex-col items-center justify-center text-white z-50">
-        <div class="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <p class="font-bold italic">Sedang Memproses...</p>
+    <div class="bg-white w-full max-w-md rounded-xl shadow-md overflow-hidden border border-gray-200">
+        <img src="https://via.placeholder.com/400x200?text=Produk+Sembako" alt="Produk" class="w-full h-48 object-cover">
+        <div class="p-4 text-center">
+            <h2 class="text-xl font-semibold text-gray-800">Paket Sembako Hemat</h2>
+            <p class="text-2xl font-bold text-green-600 my-2">Rp 72.000</p>
+            
+            <button onclick="orderNow(72000, 'c8e88263-42ae-464f-99d2-eafa72183af8')" 
+                    id="orderBtn"
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-lg transition duration-200 flex justify-center items-center gap-3">
+                <span>🛒 BELI SEKARANG</span>
+            </button>
+
+            <div id="loaderArea" class="hidden mt-4 flex flex-col items-center">
+                <div class="loader"></div>
+                <p class="text-xs text-blue-500 mt-2 font-medium animate-pulse">Sedang mengunci lokasi GPS...</p>
+            </div>
+        </div>
     </div>
 
     <script>
+        // Inisialisasi Supabase menggunakan variabel dari config.js
+        const supabaseClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY);
+
         async function orderNow(price, storeId) {
-            const isReady = confirm("Aktifkan GPS HP Anda sekarang, lalu klik OK.");
-            if(!isReady) return;
+            const btn = document.getElementById('orderBtn');
+            const loader = document.getElementById('loaderArea');
 
-            document.getElementById('loader').classList.remove('hidden');
+            // 1. Cek dukungan Geolocation
+            if (!navigator.geolocation) {
+                alert("Browser tidak mendukung GPS.");
+                return;
+            }
 
-            navigator.geolocation.getCurrentPosition(async (pos) => {
-                try {
-                    const supabaseClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY);
-                    const { error } = await supabaseClient.from('orders').insert([{
-                        total_price: price,
-                        store_id: storeId,
-                        dest_latitude: pos.coords.latitude,
-                        dest_longitude: pos.coords.longitude
-                    }]);
+            // 2. Minta konfirmasi (Pemicu izin browser)
+            const confirmGps = confirm("Izinkan TEKA-App mengakses lokasi untuk hitung ongkir?");
+            if (!confirmGps) return;
 
-                    if(error) throw error;
-                    alert("✅ BERHASIL! Cek grup Telegram.");
-                } catch (e) {
-                    alert("Error: " + e.message);
-                } finally {
-                    document.getElementById('loader').classList.add('hidden');
-                }
-            }, (err) => {
-                document.getElementById('loader').classList.add('hidden');
-                alert("GPS Gagal: Pastikan fitur lokasi HP Anda sudah menyala.");
-            }, { enableHighAccuracy: true });
+            // Update UI saat proses
+            btn.disabled = true;
+            btn.classList.add('opacity-50');
+            loader.classList.remove('hidden');
+
+            // 3. Konfigurasi GPS yang lebih "galak"
+            const geoOptions = {
+                enableHighAccuracy: true,
+                timeout: 15000,
+                maximumAge: 0
+            };
+
+            navigator.geolocation.getCurrentPosition(
+                async (position) => {
+                    try {
+                        const lat = position.coords.latitude;
+                        const lng = position.coords.longitude;
+
+                        // 4. Masukkan data ke Supabase
+                        const { error } = await supabaseClient
+                            .from('orders')
+                            .insert([
+                                { 
+                                    total_price: price, 
+                                    store_id: storeId, 
+                                    dest_latitude: lat, 
+                                    dest_longitude: lng 
+                                }
+                            ]);
+
+                        if (error) throw error;
+
+                        alert("✅ PESANAN TERKIRIM!\nKurir akan segera menghubungi Anda.");
+                        
+                    } catch (err) {
+                        console.error(err);
+                        alert("Gagal mengirim pesanan: " + err.message);
+                    } finally {
+                        resetUI();
+                    }
+                },
+                (err) => {
+                    resetUI();
+                    // Handling error yang lebih informatif
+                    if (err.code === 1) {
+                        alert("⚠️ IZIN LOKASI DITOLAK: Tolong izinkan akses lokasi melalui ikon gembok di browser.");
+                    } else if (err.code === 2) {
+                        alert("⚠️ GPS MATI: Pastikan fitur Lokasi di HP kamu sudah aktif.");
+                    } else {
+                        alert("⚠️ GPS ERROR: Sinyal lemah, coba refresh halaman.");
+                    }
+                },
+                geoOptions
+            );
+        }
+
+        function resetUI() {
+            document.getElementById('orderBtn').disabled = false;
+            document.getElementById('orderBtn').classList.remove('opacity-50');
+            document.getElementById('loaderArea').classList.add('hidden');
         }
     </script>
 </body>
