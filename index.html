@@ -4,9 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TEKA-App | Dinda Inka Shop PBL</title>
+    
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="js/config.js"></script>
+
     <style>
         .loader {
             border: 4px solid #f3f3f3;
@@ -23,106 +26,90 @@
 
     <div class="bg-white w-full max-w-md rounded-xl shadow-lg p-6 mb-4 text-center">
         <h1 class="text-2xl font-bold text-blue-600">DINDA INKA SHOP PBL</h1>
-        <p class="text-gray-500 text-sm">Purbolinggo, Lampung Timur</p>
+        <p class="text-gray-500 text-sm font-medium">Layanan Antar Purbolinggo</p>
     </div>
 
     <div class="bg-white w-full max-w-md rounded-xl shadow-md overflow-hidden border border-gray-200">
-        <img src="https://via.placeholder.com/400x200?text=Produk+Sembako" alt="Produk" class="w-full h-48 object-cover">
+        <img src="https://via.placeholder.com/400x200?text=Produk+Pilihan" alt="Produk" class="w-full h-48 object-cover">
         <div class="p-4 text-center">
             <h2 class="text-xl font-semibold text-gray-800">Paket Sembako Hemat</h2>
             <p class="text-2xl font-bold text-green-600 my-2">Rp 72.000</p>
             
-            <button onclick="orderNow(72000, 'c8e88263-42ae-464f-99d2-eafa72183af8')" 
+            <button onclick="requestOrder(72000, 'c8e88263-42ae-464f-99d2-eafa72183af8')" 
                     id="orderBtn"
                     class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-lg transition duration-200 flex justify-center items-center gap-3">
-                <span>🛒 BELI SEKARANG</span>
+                <span>🚀 PESAN VIA GPS</span>
             </button>
 
             <div id="loaderArea" class="hidden mt-4 flex flex-col items-center">
                 <div class="loader"></div>
-                <p class="text-xs text-blue-500 mt-2 font-medium animate-pulse">Sedang mengunci lokasi GPS...</p>
+                <p class="text-xs text-blue-500 mt-2 font-medium animate-pulse">Telegram sedang mengunci lokasi Anda...</p>
             </div>
         </div>
     </div>
 
     <script>
-        // Inisialisasi Supabase menggunakan variabel dari config.js
+        // Inisialisasi Telegram & Supabase
+        const tg = window.Telegram.WebApp;
         const supabaseClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY);
 
-        async function orderNow(price, storeId) {
+        // Beritahu Telegram kalau aplikasi sudah siap
+        tg.ready();
+        tg.expand(); // Membuka aplikasi secara full screen
+
+        async function requestOrder(price, storeId) {
             const btn = document.getElementById('orderBtn');
             const loader = document.getElementById('loaderArea');
 
-            // 1. Cek dukungan Geolocation
-            if (!navigator.geolocation) {
-                alert("Browser tidak mendukung GPS.");
-                return;
-            }
+            // 1. Gunakan Fitur Native Location Telegram
+            // Ini akan memicu permintaan izin lokasi bawaan aplikasi Telegram
+            tg.getLocation((data) => {
+                if (!data) {
+                    tg.showAlert("⚠️ Gagal mendapatkan lokasi. Pastikan izin GPS untuk aplikasi Telegram di HP Anda sudah aktif.");
+                    return;
+                }
 
-            // 2. Minta konfirmasi (Pemicu izin browser)
-            const confirmGps = confirm("Izinkan TEKA-App mengakses lokasi untuk hitung ongkir?");
-            if (!confirmGps) return;
+                // Jika berhasil, kirim ke database
+                submitToSupabase(price, storeId, data.latitude, data.longitude);
+            });
+        }
 
-            // Update UI saat proses
+        async function submitToSupabase(price, storeId, lat, lng) {
+            const btn = document.getElementById('orderBtn');
+            const loader = document.getElementById('loaderArea');
+
             btn.disabled = true;
             btn.classList.add('opacity-50');
             loader.classList.remove('hidden');
 
-            // 3. Konfigurasi GPS yang lebih "galak"
-            const geoOptions = {
-                enableHighAccuracy: true,
-                timeout: 15000,
-                maximumAge: 0
-            };
+            try {
+                const { error } = await supabaseClient
+                    .from('orders')
+                    .insert([{ 
+                        total_price: price, 
+                        store_id: storeId, 
+                        dest_latitude: lat, 
+                        dest_longitude: lng 
+                    }]);
 
-            navigator.geolocation.getCurrentPosition(
-                async (position) => {
-                    try {
-                        const lat = position.coords.latitude;
-                        const lng = position.coords.longitude;
+                if (error) throw error;
 
-                        // 4. Masukkan data ke Supabase
-                        const { error } = await supabaseClient
-                            .from('orders')
-                            .insert([
-                                { 
-                                    total_price: price, 
-                                    store_id: storeId, 
-                                    dest_latitude: lat, 
-                                    dest_longitude: lng 
-                                }
-                            ]);
+                // Tampilkan notifikasi sukses ala Telegram
+                tg.showPopup({
+                    title: 'Berhasil!',
+                    message: 'Pesanan Anda sudah masuk ke grup kurir.',
+                    buttons: [{type: 'ok'}]
+                }, () => {
+                    tg.close(); // Tutup aplikasi setelah user klik OK
+                });
 
-                        if (error) throw error;
-
-                        alert("✅ PESANAN TERKIRIM!\nKurir akan segera menghubungi Anda.");
-                        
-                    } catch (err) {
-                        console.error(err);
-                        alert("Gagal mengirim pesanan: " + err.message);
-                    } finally {
-                        resetUI();
-                    }
-                },
-                (err) => {
-                    resetUI();
-                    // Handling error yang lebih informatif
-                    if (err.code === 1) {
-                        alert("⚠️ IZIN LOKASI DITOLAK: Tolong izinkan akses lokasi melalui ikon gembok di browser.");
-                    } else if (err.code === 2) {
-                        alert("⚠️ GPS MATI: Pastikan fitur Lokasi di HP kamu sudah aktif.");
-                    } else {
-                        alert("⚠️ GPS ERROR: Sinyal lemah, coba refresh halaman.");
-                    }
-                },
-                geoOptions
-            );
-        }
-
-        function resetUI() {
-            document.getElementById('orderBtn').disabled = false;
-            document.getElementById('orderBtn').classList.remove('opacity-50');
-            document.getElementById('loaderArea').classList.add('hidden');
+            } catch (err) {
+                tg.showAlert("Gagal menyimpan data: " + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.classList.remove('opacity-50');
+                loader.classList.add('hidden');
+            }
         }
     </script>
 </body>
