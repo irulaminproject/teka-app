@@ -3,113 +3,95 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TEKA-App | Dinda Inka Shop PBL</title>
-    
+    <title>TEKA-App | DINDA INKA SHOP</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="js/config.js"></script>
-
-    <style>
-        .loader {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #3498db;
-            border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            animation: spin 2s linear infinite;
-        }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-    </style>
 </head>
-<body class="bg-gray-100 min-h-screen flex flex-col items-center p-4">
+<body class="bg-gray-900 text-white min-h-screen flex flex-col items-center p-4 font-sans">
 
-    <div class="bg-white w-full max-w-md rounded-xl shadow-lg p-6 mb-4 text-center">
-        <h1 class="text-2xl font-bold text-blue-600">DINDA INKA SHOP PBL</h1>
-        <p class="text-gray-500 text-sm font-medium">Layanan Antar Purbolinggo</p>
-    </div>
+    <div class="w-full max-w-md bg-gray-800 rounded-3xl p-6 shadow-2xl border border-gray-700 mt-4">
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-black text-yellow-400 italic">TEKA-App</h1>
+            <p class="text-gray-400 text-xs tracking-widest uppercase">Delivery Purbolinggo</p>
+        </div>
 
-    <div class="bg-white w-full max-w-md rounded-xl shadow-md overflow-hidden border border-gray-200">
-        <img src="https://via.placeholder.com/400x200?text=Produk+Pilihan" alt="Produk" class="w-full h-48 object-cover">
-        <div class="p-4 text-center">
-            <h2 class="text-xl font-semibold text-gray-800">Paket Sembako Hemat</h2>
-            <p class="text-2xl font-bold text-green-600 my-2">Rp 72.000</p>
-            
-            <button onclick="requestOrder(72000, 'c8e88263-42ae-464f-99d2-eafa72183af8')" 
-                    id="orderBtn"
-                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-lg transition duration-200 flex justify-center items-center gap-3">
-                <span>🚀 PESAN VIA GPS</span>
+        <div class="bg-gray-700 rounded-2xl p-5 border border-gray-600 mb-6">
+            <h2 class="text-xl font-bold">Beras Premium 5kg</h2>
+            <p class="text-2xl font-black text-green-400 mt-2">Rp 72.000</p>
+        </div>
+
+        <div id="actionArea">
+            <button onclick="getLocation()" id="gpsBtn" class="w-full bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-black py-5 rounded-2xl shadow-xl transition-all flex justify-center items-center gap-3">
+                📍 AKTIFKAN GPS & PESAN
             </button>
+        </div>
 
-            <div id="loaderArea" class="hidden mt-4 flex flex-col items-center">
-                <div class="loader"></div>
-                <p class="text-xs text-blue-500 mt-2 font-medium animate-pulse">Telegram sedang mengunci lokasi Anda...</p>
-            </div>
+        <div id="loaderArea" class="hidden text-center py-5">
+            <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-yellow-400 mx-auto"></div>
+            <p class="text-yellow-400 mt-4 font-bold text-sm">MENGUNCI KOORDINAT...</p>
         </div>
     </div>
 
     <script>
-        // Inisialisasi Telegram & Supabase
         const tg = window.Telegram.WebApp;
         const supabaseClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY);
-
-        // Beritahu Telegram kalau aplikasi sudah siap
+        
         tg.ready();
-        tg.expand(); // Membuka aplikasi secara full screen
+        tg.expand();
 
-        async function requestOrder(price, storeId) {
-            const btn = document.getElementById('orderBtn');
+        function getLocation() {
+            const gpsBtn = document.getElementById('gpsBtn');
             const loader = document.getElementById('loaderArea');
 
-            // 1. Gunakan Fitur Native Location Telegram
-            // Ini akan memicu permintaan izin lokasi bawaan aplikasi Telegram
-            tg.getLocation((data) => {
-                if (!data) {
-                    tg.showAlert("⚠️ Gagal mendapatkan lokasi. Pastikan izin GPS untuk aplikasi Telegram di HP Anda sudah aktif.");
-                    return;
-                }
+            gpsBtn.classList.add('hidden');
+            loader.classList.remove('hidden');
 
-                // Jika berhasil, kirim ke database
-                submitToSupabase(price, storeId, data.latitude, data.longitude);
+            // Minta lokasi langsung lewat fitur WebApp Telegram
+            tg.getLocation((data) => {
+                if (data && data.latitude) {
+                    sendOrder(data.latitude, data.longitude);
+                } else {
+                    // Jika fitur Telegram gagal, pakai cadangan Browser
+                    navigator.geolocation.getCurrentPosition(
+                        (pos) => sendOrder(pos.coords.latitude, pos.coords.longitude),
+                        (err) => {
+                            alert("Gagal ambil lokasi. Pastikan GPS HP Aktif & Izin Telegram diizinkan.");
+                            resetUI();
+                        },
+                        { enableHighAccuracy: true }
+                    );
+                }
             });
         }
 
-        async function submitToSupabase(price, storeId, lat, lng) {
-            const btn = document.getElementById('orderBtn');
-            const loader = document.getElementById('loaderArea');
-
-            btn.disabled = true;
-            btn.classList.add('opacity-50');
-            loader.classList.remove('hidden');
-
+        async function sendOrder(lat, lng) {
             try {
-                const { error } = await supabaseClient
-                    .from('orders')
-                    .insert([{ 
-                        total_price: price, 
-                        store_id: storeId, 
-                        dest_latitude: lat, 
-                        dest_longitude: lng 
-                    }]);
+                const { error } = await supabaseClient.from('orders').insert([{ 
+                    total_price: 72000, 
+                    store_id: 'c8e88263-42ae-464f-99d2-eafa72183af8', 
+                    dest_latitude: lat, 
+                    dest_longitude: lng 
+                }]);
 
                 if (error) throw error;
 
-                // Tampilkan notifikasi sukses ala Telegram
                 tg.showPopup({
-                    title: 'Berhasil!',
-                    message: 'Pesanan Anda sudah masuk ke grup kurir.',
-                    buttons: [{type: 'ok'}]
-                }, () => {
-                    tg.close(); // Tutup aplikasi setelah user klik OK
-                });
+                    title: 'BERHASIL!',
+                    message: 'Orderan terkirim. Kurir akan segera meluncur.',
+                    buttons: [{type: 'close'}]
+                }, () => tg.close());
 
             } catch (err) {
-                tg.showAlert("Gagal menyimpan data: " + err.message);
-            } finally {
-                btn.disabled = false;
-                btn.classList.remove('opacity-50');
-                loader.classList.add('hidden');
+                alert("Error: " + err.message);
+                resetUI();
             }
+        }
+
+        function resetUI() {
+            document.getElementById('gpsBtn').classList.remove('hidden');
+            document.getElementById('loaderArea').classList.add('hidden');
         }
     </script>
 </body>
