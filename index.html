@@ -11,90 +11,87 @@
 </head>
 <body class="bg-gray-900 text-white min-h-screen flex flex-col items-center p-4">
 
-    <div class="w-full max-w-md bg-gray-800 rounded-3xl p-6 shadow-2xl border border-gray-700 mt-4">
-        <div class="text-center mb-8">
-            <h1 class="text-3xl font-black text-yellow-400 italic">TEKA-App</h1>
-            <p class="text-gray-400 text-xs tracking-widest uppercase">Delivery Purbolinggo</p>
-        </div>
+    <div class="w-full max-w-md bg-gray-800 rounded-3xl p-6 shadow-2xl border border-gray-700 mt-4 text-center">
+        <h1 class="text-3xl font-black text-yellow-400 italic italic">TEKA-App</h1>
+        <p class="text-gray-400 text-[10px] tracking-widest uppercase">Pesan Sembako Purbolinggo</p>
+    </div>
 
+    <div class="w-full max-w-md bg-gray-800 rounded-3xl p-6 shadow-2xl border border-gray-700 mt-4">
         <div class="bg-gray-700 rounded-2xl p-5 border border-gray-600 mb-6 text-center">
             <h2 class="text-xl font-bold">Paket Sembako Hemat</h2>
-            <p class="text-2xl font-black text-green-400 mt-2">Rp 72.000</p>
+            <p class="text-3xl font-black text-green-400 mt-2">Rp 72.000</p>
         </div>
 
-        <button onclick="handleOrderClick(72000, 'c8e88263-42ae-464f-99d2-eafa72183af8')" 
-                id="orderBtn" 
-                class="w-full bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-black py-5 rounded-2xl shadow-xl flex justify-center items-center gap-3 transition-transform active:scale-95">
-            <span>🚀 PESAN SEKARANG</span>
+        <button onclick="handleOrder()" id="orderBtn" 
+                class="w-full bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-black py-5 rounded-2xl shadow-xl flex justify-center items-center gap-3 transition-all active:scale-95">
+            <span>🚀 PESAN VIA GPS</span>
         </button>
 
         <div id="loaderArea" class="hidden text-center py-5">
             <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-yellow-400 mx-auto"></div>
-            <p class="text-yellow-400 mt-4 font-bold text-sm animate-pulse">MENCARI KOORDINAT...</p>
+            <p class="text-yellow-400 mt-4 font-bold text-sm animate-pulse">MENGHUBUNGI SATELIT GPS...</p>
+            <p class="text-gray-400 text-[10px] mt-2 italic">Jika muncul pesan sistem, klik "OK" atau "Turn On"</p>
         </div>
     </div>
 
     <script>
-        // Inisialisasi
         const tg = window.Telegram.WebApp;
         const supabaseClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY);
         
         tg.ready();
         tg.expand();
 
-        function handleOrderClick(price, storeId) {
+        async function handleOrder() {
             const btn = document.getElementById('orderBtn');
             const loader = document.getElementById('loaderArea');
 
-            // 1. Ganti UI ke Loading
+            // Sembunyikan tombol, munculkan loader
             btn.classList.add('hidden');
             loader.classList.remove('hidden');
 
-            console.log("Memulai pencarian lokasi...");
-
-            // 2. Timer Cadangan (Jika Telegram diam lebih dari 3 detik)
-            const backupTimer = setTimeout(() => {
-                console.log("Telegram diam, beralih ke Browser GPS...");
-                fallbackToBrowser(price, storeId);
-            }, 3000);
-
-            // 3. Coba pakai cara Native Telegram
-            try {
-                tg.getLocation((data) => {
-                    if (data && data.latitude) {
-                        clearTimeout(backupTimer);
-                        console.log("Lokasi didapat dari Telegram");
-                        sendData(price, storeId, data.latitude, data.longitude);
-                    }
-                });
-            } catch (err) {
-                console.error("Metode tg.getLocation tidak didukung");
-            }
-        }
-
-        function fallbackToBrowser(price, storeId) {
-            if ("geolocation" in navigator) {
-                navigator.geolocation.getCurrentPosition(
-                    (pos) => {
-                        sendData(price, storeId, pos.coords.latitude, pos.coords.longitude);
-                    },
-                    (err) => {
-                        alert("Gagal ambil lokasi. Pastikan GPS HP nyala dan Izin Browser diberikan.");
-                        resetUI();
-                    },
-                    { enableHighAccuracy: true, timeout: 10000 }
-                );
-            } else {
-                alert("Browser tidak mendukung GPS.");
+            if (!navigator.geolocation) {
+                tg.showAlert("Browser Anda tidak mendukung GPS.");
                 resetUI();
+                return;
             }
+
+            // Memaksa Hardware GPS aktif dengan High Accuracy
+            navigator.geolocation.getCurrentPosition(
+                async (pos) => {
+                    // BERHASIL DAPAT KOORDINAT
+                    await submitData(pos.coords.latitude, pos.coords.longitude);
+                },
+                (err) => {
+                    // GAGAL (Biasanya karena GPS Mati atau Izin Ditolak)
+                    resetUI();
+                    
+                    if (err.code === 2 || err.code === 3) {
+                        // Kode 2: Location Provider error (GPS Mati)
+                        // Kode 3: Timeout (GPS tidak kunjung nyala)
+                        tg.showPopup({
+                            title: 'GPS TIDAK AKTIF',
+                            message: 'TEKA-App butuh GPS untuk hitung ongkir. Mohon AKTIFKAN LOKASI di menu bar atas HP Anda, lalu coba lagi.',
+                            buttons: [{type: 'ok'}]
+                        });
+                    } else if (err.code === 1) {
+                        tg.showAlert("IZIN DITOLAK: Tolong izinkan lokasi untuk Telegram di Settings HP.");
+                    } else {
+                        tg.showAlert("GPS Error: " + err.message);
+                    }
+                },
+                {
+                    enableHighAccuracy: true, // WAJIB: Memaksa pemicu dialog sistem "Turn on Location"
+                    timeout: 10000,           // Tunggu 10 detik
+                    maximumAge: 0             // Selalu minta lokasi terbaru
+                }
+            );
         }
 
-        async function sendData(price, storeId, lat, lng) {
+        async function submitData(lat, lng) {
             try {
                 const { error } = await supabaseClient.from('orders').insert([{ 
-                    total_price: price, 
-                    store_id: storeId, 
+                    total_price: 72000, 
+                    store_id: 'c8e88263-42ae-464f-99d2-eafa72183af8', 
                     dest_latitude: lat, 
                     dest_longitude: lng 
                 }]);
@@ -103,12 +100,12 @@
 
                 tg.showPopup({
                     title: 'BERHASIL!',
-                    message: 'Pesanan terkirim ke kurir.',
+                    message: 'Pesanan masuk ke grup kurir. Tunggu sebentar ya!',
                     buttons: [{type: 'close'}]
                 }, () => tg.close());
 
             } catch (err) {
-                alert("Gagal simpan: " + err.message);
+                tg.showAlert("Gagal simpan: " + err.message);
                 resetUI();
             }
         }
