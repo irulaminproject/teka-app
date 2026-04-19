@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TEKA-App | DINDA INKA SHOP</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/config.js"></script>
+</head>
+<body class="bg-gray-50 p-4">
+    <div class="max-w-md mx-auto">
+        <div class="bg-blue-600 p-6 rounded-3xl text-white mb-6 shadow-lg">
+            <h1 class="text-xl font-bold italic">TEKA<span class="text-yellow-400">APP</span></h1>
+            <p class="text-xs opacity-80">Pesan Sembako Delivery Purbolinggo</p>
+        </div>
+
+        <div class="bg-white p-4 rounded-3xl border shadow-sm flex items-center justify-between">
+            <div>
+                <h3 class="font-bold text-slate-800">Beras Premium 5kg</h3>
+                <p class="text-blue-600 font-bold">Rp72.000</p>
+            </div>
+            <button onclick="orderNow(72000, 'c8e88263-42ae-464f-99d2-eafa72183af8')" 
+                    class="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold text-xs shadow-md active:scale-95 transition-all">
+                BELI
+            </button>
+        </div>
+    </div>
+
+    <div id="loader" class="fixed inset-0 bg-black/80 hidden flex flex-col items-center justify-center text-white z-50">
+        <div class="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p class="font-bold italic">Sedang Memproses...</p>
+    </div>
+
+    <script>
+        async function orderNow(price, storeId) {
+            const isReady = confirm("Aktifkan GPS HP Anda sekarang, lalu klik OK.");
+            if(!isReady) return;
+
+            document.getElementById('loader').classList.remove('hidden');
+
+            navigator.geolocation.getCurrentPosition(async (pos) => {
+                try {
+                    const supabaseClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY);
+                    const { error } = await supabaseClient.from('orders').insert([{
+                        total_price: price,
+                        store_id: storeId,
+                        dest_latitude: pos.coords.latitude,
+                        dest_longitude: pos.coords.longitude
+                    }]);
+
+                    if(error) throw error;
+                    alert("✅ BERHASIL! Cek grup Telegram.");
+                } catch (e) {
+                    alert("Error: " + e.message);
+                } finally {
+                    document.getElementById('loader').classList.add('hidden');
+                }
+            }, (err) => {
+                document.getElementById('loader').classList.add('hidden');
+                alert("GPS Gagal: Pastikan fitur lokasi HP Anda sudah menyala.");
+            }, { enableHighAccuracy: true });
+        }
+    </script>
+</body>
+</html>
