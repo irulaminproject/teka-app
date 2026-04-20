@@ -3,114 +3,99 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TEKA-App | DINDA INKA SHOP</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <title>TEKA-App | Checkout</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/config.js"></script>
 </head>
-<body class="bg-gray-900 text-white min-h-screen flex flex-col items-center p-4">
+<body class="bg-gray-50 p-4">
+    <div class="max-w-md mx-auto">
+        <div class="bg-blue-600 p-6 rounded-3xl text-white mb-6 shadow-lg">
+            <h1 class="text-xl font-bold italic">TEKA<span class="text-yellow-400">APP</span></h1>
+            <p class="text-xs opacity-80">Konfirmasi Pesanan Anda</p>
+        </div>
 
-    <div class="w-full max-w-md bg-gray-800 rounded-3xl p-6 shadow-2xl border border-gray-700 mt-4 text-center">
-        <h1 class="text-3xl font-black text-yellow-400 italic">TEKA-App</h1>
-        <p class="text-gray-400 text-[10px] tracking-widest uppercase">Pesan Sembako Purbolinggo</p>
+        <div class="bg-white p-4 rounded-3xl border shadow-sm flex items-center justify-between">
+            <div>
+                <h3 class="font-bold text-slate-800">Lanjutkan Pemesanan</h3>
+                <p class="text-blue-600 font-bold">Pastikan GPS Aktif</p>
+            </div>
+            <button onclick="orderNow(72000, 'MASUKKAN_STORE_ID_DISINI')" 
+                    class="bg-yellow-400 text-black px-6 py-3 rounded-2xl font-black uppercase text-xs shadow-md">
+                Beli Sekarang
+            </button>
+        </div>
     </div>
 
-    <div class="w-full max-w-md bg-gray-800 rounded-3xl p-6 shadow-2xl border border-gray-700 mt-4">
-        <div class="bg-gray-700 rounded-2xl p-5 border border-gray-600 mb-6 text-center">
-            <h2 class="text-xl font-bold">Paket Sembako Hemat</h2>
-            <p class="text-3xl font-black text-green-400 mt-2">Rp 72.000</p>
-        </div>
-
-        <button onclick="handleOrder()" id="orderBtn" 
-                class="w-full bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-black py-5 rounded-2xl shadow-xl flex justify-center items-center gap-3 transition-all active:scale-95">
-            <span>🚀 PESAN VIA GPS</span>
-        </button>
-
-        <div id="loaderArea" class="hidden text-center py-5">
-            <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-yellow-400 mx-auto"></div>
-            <p class="text-yellow-400 mt-4 font-bold text-sm animate-pulse">MENGHUBUNGI SATELIT GPS...</p>
-            <p class="text-gray-400 text-[10px] mt-2 italic">Jika muncul pesan sistem, klik "OK" atau "Turn On"</p>
-        </div>
+    <div id="loader" class="fixed inset-0 bg-white/80 backdrop-blur-sm hidden flex-col items-center justify-center z-50">
+        <div class="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p class="font-bold italic">Sedang Memproses...</p>
     </div>
 
     <script>
-        const tg = window.Telegram.WebApp;
-        const supabaseClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY);
-        
-        tg.ready();
-        tg.expand();
+        async function orderNow(price, storeId) {
+            const isReady = confirm("Aktifkan GPS HP Anda sekarang untuk keperluan pengiriman, lalu klik OK.");
+            if(!isReady) return;
 
-        async function handleOrder() {
-            const btn = document.getElementById('orderBtn');
-            const loader = document.getElementById('loaderArea');
+            document.getElementById('loader').classList.remove('hidden');
 
-            btn.classList.add('hidden');
-            loader.classList.remove('hidden');
+            navigator.geolocation.getCurrentPosition(async (pos) => {
+                try {
+                    const supabaseClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY);
+                    
+                    // 1. Simpan Order ke Database
+                    const { data: order, error: orderError } = await supabaseClient.from('orders').insert([{
+                        total_price: price,
+                        store_id: storeId,
+                        dest_latitude: pos.coords.latitude,
+                        dest_longitude: pos.coords.longitude,
+                        status: 'pending'
+                    }]).select().single();
 
-            if (!navigator.geolocation) {
-                tg.showAlert("Browser Anda tidak mendukung GPS.");
-                resetUI();
-                return;
-            }
+                    if(orderError) throw orderError;
 
-            navigator.geolocation.getCurrentPosition(
-                async (pos) => {
-                    await submitData(pos.coords.latitude, pos.coords.longitude);
-                },
-                (err) => {
-                    resetUI();
-                    if (err.code === 2 || err.code === 3) {
-                        tg.showPopup({
-                            title: 'GPS TIDAK AKTIF',
-                            message: 'Mohon AKTIFKAN LOKASI (GPS) di HP Anda lalu coba lagi.',
-                            buttons: [{type: 'ok'}]
+                    // 2. Ambil ID Grup Wilayah secara Dinamis
+                    const { data: info } = await supabaseClient
+                        .from('stores')
+                        .select(`
+                            store_name,
+                            pangkalan (telegram_group_id)
+                        `)
+                        .eq('id', storeId)
+                        .single();
+
+                    const targetGroup = info?.pangkalan?.telegram_group_id;
+
+                    // 3. Kirim Notifikasi ke Grup Telegram yang Sesuai
+                    if (targetGroup) {
+                        const message = `📦 *ORDER BARU (LANDING PAGE)*\n\n` +
+                                        `💰 Total: Rp${price.toLocaleString('id-ID')}\n` +
+                                        `🏪 Toko: ${info.store_name}\n` +
+                                        `📍 Lokasi: http://google.com/maps?q=${pos.coords.latitude},${pos.coords.longitude}\n\n` +
+                                        `🚨 *Kurir Wilayah:* Ada pesanan baru, segera cek dashboard!`;
+
+                        await fetch(`https://api.telegram.org/bot${CONFIG.TELEGRAM_BOT_TOKEN || '8537812998:AAHEL4kqYY8mS4LLOuTZjbvf7vAnpusxjSM'}/sendMessage`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                chat_id: targetGroup,
+                                text: message,
+                                parse_mode: "Markdown"
+                            })
                         });
-                    } else {
-                        tg.showAlert("GPS Error: " + err.message);
                     }
-                },
-                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-            );
-        }
 
-        async function submitData(lat, lng) {
-            try {
-                // --- BAGIAN KRUSIAL: Ambil Data User Telegram ---
-                const user = tg.initDataUnsafe.user;
-                
-                if (!user || !user.id) {
-                    tg.showAlert("Gagal mengambil ID Telegram. Pastikan Anda membuka via Telegram.");
-                    resetUI();
-                    return;
+                    alert("✅ BERHASIL! Pesanan Anda sedang diproses oleh kurir wilayah.");
+                    
+                } catch (e) {
+                    alert("Gagal memproses pesanan: " + e.message);
+                } finally {
+                    document.getElementById('loader').classList.add('hidden');
                 }
-
-                const { error } = await supabaseClient.from('orders').insert([{ 
-                    total_price: 72000, 
-                    store_id: 'c8e88263-42ae-464f-99d2-eafa72183af8', 
-                    dest_latitude: lat, 
-                    dest_longitude: lng,
-                    customer_tg_id: user.id,           // Simpan ID Telegram Pembeli
-                    customer_name: user.first_name     // Simpan Nama Pembeli
-                }]);
-
-                if (error) throw error;
-
-                tg.showPopup({
-                    title: 'BERHASIL!',
-                    message: 'Pesanan terkirim! Jendela ini akan tertutup, silakan cek chat Bot untuk bicara dengan kurir.',
-                    buttons: [{type: 'close'}]
-                }, () => tg.close());
-
-            } catch (err) {
-                tg.showAlert("Gagal simpan: " + err.message);
-                resetUI();
-            }
-        }
-
-        function resetUI() {
-            document.getElementById('orderBtn').classList.remove('hidden');
-            document.getElementById('loaderArea').classList.add('hidden');
+            }, (err) => {
+                document.getElementById('loader').classList.add('hidden');
+                alert("GPS Gagal: Pastikan fitur lokasi HP Anda sudah aktif.");
+            }, { enableHighAccuracy: true });
         }
     </script>
 </body>
