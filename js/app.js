@@ -1,34 +1,40 @@
-// 1. Inisialisasi Telegram & Supabase
+// ==========================================
+// 1. INISIALISASI DASAR (TELEGRAM & SUPABASE)
+// ==========================================
 const tg = window.Telegram.WebApp;
 const _supabase = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY);
 
-// State Global untuk menyimpan pesanan sementara
+// State untuk menyimpan data produk yang sedang dipilih
 let currentOrder = null;
 
-// Beritahu Telegram kalau aplikasi sudah siap
+// Beritahu Telegram kalau aplikasi siap digunakan
 tg.ready();
 tg.expand();
 
-// Jalankan fungsi utama
+// Jalankan fungsi utama saat aplikasi dibuka
 initTeka();
 
+// ==========================================
+// 2. FUNGSI UTAMA (INIT & SYNC USER)
+// ==========================================
 async function initTeka() {
     const user = tg.initDataUnsafe?.user;
 
     if (user) {
-        // Tampilkan Nama User di UI
+        // Tampilkan Identitas User di UI (Jika elemen ID ada di HTML)
         const nameElement = document.getElementById('user-name');
-        if (nameElement) nameElement.innerText = user.first_name;
+        if (nameElement) {
+            nameElement.innerText = user.first_name;
+        }
         
-        // Tampilkan Foto jika ada
-        if (user.photo_url) {
-            const avatarContainer = document.getElementById('user-avatar');
-            const photoElement = document.getElementById('user-photo');
-            if (avatarContainer) avatarContainer.classList.remove('hidden');
-            if (photoElement) photoElement.src = user.photo_url;
+        const avatarContainer = document.getElementById('user-avatar');
+        const photoElement = document.getElementById('user-photo');
+        if (user.photo_url && avatarContainer && photoElement) {
+            avatarContainer.classList.remove('hidden');
+            photoElement.src = user.photo_url;
         }
 
-        // Sinkronisasi User ke Database Profiles
+        // Simpan atau Perbarui data user ke tabel Profiles di Supabase
         await _supabase.from('profiles').upsert({ 
             telegram_id: user.id, 
             full_name: `${user.first_name} ${user.last_name || ''}`,
@@ -36,10 +42,13 @@ async function initTeka() {
         }, { onConflict: 'telegram_id' });
     }
 
-    // Ambil daftar produk
+    // Lanjut ambil daftar produk untuk dipajang
     loadProducts();
 }
 
+// ==========================================
+// 3. FUNGSI LOAD PRODUK DARI DATABASE
+// ==========================================
 async function loadProducts() {
     const { data: products, error } = await _supabase
         .from('products')
@@ -56,12 +65,13 @@ async function loadProducts() {
     if (!container) return;
 
     if (error) {
-        console.error("Fetch Error:", error.message);
+        console.error("Gagal mengambil produk:", error.message);
+        container.innerHTML = `<p class="text-center text-red-500">Gagal memuat produk.</p>`;
         return;
     }
 
     if (products && products.length > 0) {
-        container.innerHTML = ''; // Bersihkan container
+        container.innerHTML = ''; // Kosongkan loader
 
         products.forEach(item => {
             const productHTML = `
@@ -84,94 +94,123 @@ async function loadProducts() {
             `;
             container.innerHTML += productHTML;
         });
+    } else {
+        container.innerHTML = `<p class="text-center text-gray-400 py-10">Belum ada produk tersedia.</p>`;
     }
 }
 
-// Fungsi saat tombol "Beli" diklik (Memunculkan Tombol Kuning Telegram di bawah)
+// ==========================================
+// 4. FUNGSI HANDLING KLIK BELI
+// ==========================================
 function handleOrder(productId, productName, productPrice, storeId) {
+    // Simpan data ke variabel global agar bisa diakses saat Checkout
     currentOrder = { id: productId, name: productName, price: productPrice, store_id: storeId };
     
-    tg.MainButton.setText(`BAYAR: ${productName.toUpperCase()} - Rp${productPrice.toLocaleString('id-ID')}`);
+    // Konfigurasi Tombol Utama Telegram (MainButton)
+    tg.MainButton.setText(`KONFIRMASI: ${productName.toUpperCase()} - Rp${productPrice.toLocaleString('id-ID')}`);
     tg.MainButton.setParams({
-        color: '#FACC15', // Warna kuning
+        color: '#FACC15',
         text_color: '#000000'
     });
     tg.MainButton.show();
+    
+    // Getar HP user sedikit (Haptic Feedback)
     tg.HapticFeedback.impactOccurred('medium');
 }
 
-// Event Listener saat Tombol Utama Telegram (MainButton) diklik untuk Checkout & Invoice
+// ==========================================
+// 5. FUNGSI CHECKOUT & DOUBLE NOTIFICATION (INVOICE)
+// ==========================================
 tg.MainButton.onClick(async () => {
     if (!currentOrder) return;
 
+    // Tampilkan loading di MainButton agar user tidak klik berkali-kali
     tg.MainButton.showProgress(); 
     
     const user = tg.initDataUnsafe?.user;
     if (!user) {
-        tg.showAlert("Gunakan Telegram untuk memesan.");
+        tg.showAlert("Gunakan Telegram untuk melakukan pemesanan.");
         tg.MainButton.hideProgress();
         return;
     }
 
-    // 1. Ambil UUID Profile User
-    const { data: profile } = await _supabase
+    // A. Ambil ID Internal Profile Supabase
+    const { data: profile, error: profileError } = await _supabase
         .from('profiles')
         .select('id')
         .eq('telegram_id', user.id)
         .single();
 
-    if (profile) {
-        // 2. Simpan ke tabel orders
-        const { data: order, error } = await _supabase
-            .from('orders')
-            .insert({
-                buyer_id: profile.id,
-                store_id: currentOrder.store_id || null,
-                total_price: currentOrder.price,
-                status: 'pending'
-            })
-            .select()
-            .single();
-
-        if (!error) {
-            // 3. Ambil data Toko & Grup Wilayah untuk Invoice
-            const { data: info } = await _supabase
-                .from('stores')
-                .select('store_name, pangkalan(telegram_group_id)')
-                .eq('id', currentOrder.store_id)
-                .single();
-
-            // 4. Kirim Invoice ke Grup Telegram Wilayah
-            if (info?.pangkalan?.telegram_group_id) {
-                const invoiceText = `🧾 *INVOICE DIGITAL #ORD-${order.id.slice(0, 8)}*\n` +
-                                    `------------------------------------------\n` +
-                                    `👤 *Pembeli:* ${user.first_name}\n` +
-                                    `🏪 *Toko:* ${info.store_name}\n` +
-                                    `🛍️ *Produk:* ${currentOrder.name}\n` +
-                                    `💰 *Total Bayar:* Rp${currentOrder.price.toLocaleString('id-ID')}\n` +
-                                    `------------------------------------------\n` +
-                                    `🕒 _Status: Menunggu Konfirmasi Kurir_`;
-
-                await fetch(`https://api.telegram.org/bot8537812998:AAHEL4kqYY8mS4LLOuTZjbvf7vAnpusxjSM/sendMessage`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        chat_id: info.pangkalan.telegram_group_id,
-                        text: invoiceText,
-                        parse_mode: "Markdown"
-                    })
-                });
-            }
-
-            tg.HapticFeedback.notificationOccurred('success');
-            tg.showAlert(`Pesanan Berhasil! Invoice telah dikirim ke grup wilayah.`);
-            tg.MainButton.hide();
-        } else {
-            tg.showAlert("Gagal memesan: " + error.message);
-        }
-    } else {
-        tg.showAlert("Profil tidak ditemukan. Coba refresh aplikasi.");
+    if (profileError || !profile) {
+        tg.showAlert("Data profil tidak ditemukan. Harap refresh aplikasi.");
+        tg.MainButton.hideProgress();
+        return;
     }
-    
+
+    // B. Simpan data ke tabel Orders
+    const { data: order, error: orderError } = await _supabase
+        .from('orders')
+        .insert({
+            buyer_id: profile.id,
+            store_id: currentOrder.store_id || null,
+            total_price: currentOrder.price,
+            status: 'pending'
+        })
+        .select() // Penting: Ambil kembali data yang baru disimpan
+        .single();
+
+    if (orderError) {
+        tg.showAlert("Gagal membuat pesanan: " + orderError.message);
+        tg.MainButton.hideProgress();
+        return;
+    }
+
+    // C. Ambil Info Toko & Grup Telegram Wilayah
+    const { data: storeInfo } = await _supabase
+        .from('stores')
+        .select('store_name, pangkalan(telegram_group_id)')
+        .eq('id', currentOrder.store_id)
+        .single();
+
+    // D. Siapkan Format Invoice Digital
+    const invoiceContent = `🧾 *INVOICE TEKA-APP*\n` +
+                           `ID Order: #ORD-${order.id.slice(0, 8)}\n` +
+                           `------------------------------------------\n` +
+                           `👤 *Pembeli:* ${user.first_name}\n` +
+                           `🛍️ *Produk:* ${currentOrder.name}\n` +
+                           `💰 *Total:* Rp${currentOrder.price.toLocaleString('id-ID')}\n` +
+                           `🏪 *Toko:* ${storeInfo?.store_name || 'Toko TEKA'}\n` +
+                           `------------------------------------------\n` +
+                           `🕒 _Status: Menunggu Konfirmasi Kurir_`;
+
+    // E. KIRIM KE GRUP KURIR (OPERASIONAL)
+    const targetGroup = storeInfo?.pangkalan?.telegram_group_id;
+    if (targetGroup) {
+        await fetch(`https://api.telegram.org/bot8537812998:AAHEL4kqYY8mS4LLOuTZjbvf7vAnpusxjSM/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                chat_id: targetGroup,
+                text: `🚨 *ADA PESANAN BARU!*\n` + invoiceContent,
+                parse_mode: "Markdown"
+            })
+        });
+    }
+
+    // F. KIRIM KE USER (INVOICE PRIBADI)
+    await fetch(`https://api.telegram.org/bot8537812998:AAHEL4kqYY8mS4LLOuTZjbvf7vAnpusxjSM/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            chat_id: user.id, // Kirim ke chat pribadi pembeli
+            text: invoiceContent,
+            parse_mode: "Markdown"
+        })
+    });
+
+    // G. SELESAI
+    tg.HapticFeedback.notificationOccurred('success');
+    tg.showAlert(`Pesanan ${currentOrder.name} Berhasil! Invoice telah dikirim ke chat Telegram Anda.`);
+    tg.MainButton.hide();
     tg.MainButton.hideProgress();
 });
