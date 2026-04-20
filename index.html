@@ -12,7 +12,7 @@
 <body class="bg-gray-900 text-white min-h-screen flex flex-col items-center p-4">
 
     <div class="w-full max-w-md bg-gray-800 rounded-3xl p-6 shadow-2xl border border-gray-700 mt-4 text-center">
-        <h1 class="text-3xl font-black text-yellow-400 italic italic">TEKA-App</h1>
+        <h1 class="text-3xl font-black text-yellow-400 italic">TEKA-App</h1>
         <p class="text-gray-400 text-[10px] tracking-widest uppercase">Pesan Sembako Purbolinggo</p>
     </div>
 
@@ -45,7 +45,6 @@
             const btn = document.getElementById('orderBtn');
             const loader = document.getElementById('loaderArea');
 
-            // Sembunyikan tombol, munculkan loader
             btn.classList.add('hidden');
             loader.classList.remove('hidden');
 
@@ -55,52 +54,51 @@
                 return;
             }
 
-            // Memaksa Hardware GPS aktif dengan High Accuracy
             navigator.geolocation.getCurrentPosition(
                 async (pos) => {
-                    // BERHASIL DAPAT KOORDINAT
                     await submitData(pos.coords.latitude, pos.coords.longitude);
                 },
                 (err) => {
-                    // GAGAL (Biasanya karena GPS Mati atau Izin Ditolak)
                     resetUI();
-                    
                     if (err.code === 2 || err.code === 3) {
-                        // Kode 2: Location Provider error (GPS Mati)
-                        // Kode 3: Timeout (GPS tidak kunjung nyala)
                         tg.showPopup({
                             title: 'GPS TIDAK AKTIF',
-                            message: 'TEKA-App butuh GPS untuk hitung ongkir. Mohon AKTIFKAN LOKASI di menu bar atas HP Anda, lalu coba lagi.',
+                            message: 'Mohon AKTIFKAN LOKASI (GPS) di HP Anda lalu coba lagi.',
                             buttons: [{type: 'ok'}]
                         });
-                    } else if (err.code === 1) {
-                        tg.showAlert("IZIN DITOLAK: Tolong izinkan lokasi untuk Telegram di Settings HP.");
                     } else {
                         tg.showAlert("GPS Error: " + err.message);
                     }
                 },
-                {
-                    enableHighAccuracy: true, // WAJIB: Memaksa pemicu dialog sistem "Turn on Location"
-                    timeout: 10000,           // Tunggu 10 detik
-                    maximumAge: 0             // Selalu minta lokasi terbaru
-                }
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
             );
         }
 
         async function submitData(lat, lng) {
             try {
+                // --- BAGIAN KRUSIAL: Ambil Data User Telegram ---
+                const user = tg.initDataUnsafe.user;
+                
+                if (!user || !user.id) {
+                    tg.showAlert("Gagal mengambil ID Telegram. Pastikan Anda membuka via Telegram.");
+                    resetUI();
+                    return;
+                }
+
                 const { error } = await supabaseClient.from('orders').insert([{ 
                     total_price: 72000, 
                     store_id: 'c8e88263-42ae-464f-99d2-eafa72183af8', 
                     dest_latitude: lat, 
-                    dest_longitude: lng 
+                    dest_longitude: lng,
+                    customer_tg_id: user.id,           // Simpan ID Telegram Pembeli
+                    customer_name: user.first_name     // Simpan Nama Pembeli
                 }]);
 
                 if (error) throw error;
 
                 tg.showPopup({
                     title: 'BERHASIL!',
-                    message: 'Pesanan masuk ke grup kurir. Tunggu sebentar ya!',
+                    message: 'Pesanan terkirim! Jendela ini akan tertutup, silakan cek chat Bot untuk bicara dengan kurir.',
                     buttons: [{type: 'close'}]
                 }, () => tg.close());
 
