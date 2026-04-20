@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TEKA-App | Checkout</title>
+    <title>TEKA-App | Landing Page</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/config.js"></script>
@@ -12,39 +12,62 @@
     <div class="max-w-md mx-auto">
         <div class="bg-blue-600 p-6 rounded-3xl text-white mb-6 shadow-lg">
             <h1 class="text-xl font-bold italic">TEKA<span class="text-yellow-400">APP</span></h1>
-            <p class="text-xs opacity-80">Konfirmasi Pesanan Anda</p>
+            <p class="text-xs opacity-80" id="shop-tagline">Pesan Sembako Delivery</p>
         </div>
 
-        <div class="bg-white p-4 rounded-3xl border shadow-sm flex items-center justify-between">
-            <div>
-                <h3 class="font-bold text-slate-800">Lanjutkan Pemesanan</h3>
-                <p class="text-blue-600 font-bold">Pastikan GPS Aktif</p>
-            </div>
-            <button onclick="orderNow(72000, 'MASUKKAN_STORE_ID_DISINI')" 
-                    class="bg-yellow-400 text-black px-6 py-3 rounded-2xl font-black uppercase text-xs shadow-md">
-                Beli Sekarang
-            </button>
+        <div id="product-list" class="space-y-4">
+            <p class="text-center text-gray-400 py-10">Memuat produk...</p>
         </div>
     </div>
 
-    <div id="loader" class="fixed inset-0 bg-white/80 backdrop-blur-sm hidden flex-col items-center justify-center z-50">
-        <div class="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+    <div id="loader" class="fixed inset-0 bg-black/80 hidden flex flex-col items-center justify-center text-white z-50">
+        <div class="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
         <p class="font-bold italic">Sedang Memproses...</p>
     </div>
 
     <script>
-        async function orderNow(price, storeId) {
-            const isReady = confirm("Aktifkan GPS HP Anda sekarang untuk keperluan pengiriman, lalu klik OK.");
+        const supabaseClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY);
+
+        // 1. Fungsi Mengambil Produk Langsung dari Database
+        async function loadLandingProducts() {
+            const { data: products, error } = await supabaseClient
+                .from('products')
+                .select('id, name, price, store_id, stores(store_name)')
+                .eq('is_available', true)
+                .limit(5); // Ambil beberapa produk untuk landing page
+
+            const container = document.getElementById('product-list');
+            if (error || !products) {
+                container.innerHTML = '<p class="text-center text-red-500">Gagal memuat produk.</p>';
+                return;
+            }
+
+            container.innerHTML = products.map(p => `
+                <div class="bg-white p-4 rounded-3xl border shadow-sm flex items-center justify-between">
+                    <div>
+                        <p class="text-[10px] font-bold text-blue-500 uppercase">${p.stores?.store_name || 'Toko TEKA'}</p>
+                        <h3 class="font-bold text-slate-800">${p.name}</h3>
+                        <p class="text-blue-600 font-bold">Rp${p.price.toLocaleString('id-ID')}</p>
+                    </div>
+                    <button onclick="orderNow(${p.price}, '${p.store_id}', '${p.name}')" 
+                            class="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold text-xs shadow-md active:scale-95 transition-all">
+                        BELI
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        // 2. Fungsi Order dengan Notifikasi Otomatis
+        async function orderNow(price, storeId, productName) {
+            const isReady = confirm("Aktifkan GPS HP Anda sekarang, lalu klik OK.");
             if(!isReady) return;
 
             document.getElementById('loader').classList.remove('hidden');
 
             navigator.geolocation.getCurrentPosition(async (pos) => {
                 try {
-                    const supabaseClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY);
-                    
-                    // 1. Simpan Order ke Database
-                    const { data: order, error: orderError } = await supabaseClient.from('orders').insert([{
+                    // Simpan ke Database
+                    const { data: order, error: orderErr } = await supabaseClient.from('orders').insert([{
                         total_price: price,
                         store_id: storeId,
                         dest_latitude: pos.coords.latitude,
@@ -52,29 +75,24 @@
                         status: 'pending'
                     }]).select().single();
 
-                    if(orderError) throw orderError;
+                    if(orderErr) throw orderErr;
 
-                    // 2. Ambil ID Grup Wilayah secara Dinamis
+                    // Ambil ID Grup Telegram Wilayah secara Otomatis
                     const { data: info } = await supabaseClient
                         .from('stores')
-                        .select(`
-                            store_name,
-                            pangkalan (telegram_group_id)
-                        `)
+                        .select('pangkalan(telegram_group_id)')
                         .eq('id', storeId)
                         .single();
 
                     const targetGroup = info?.pangkalan?.telegram_group_id;
 
-                    // 3. Kirim Notifikasi ke Grup Telegram yang Sesuai
                     if (targetGroup) {
                         const message = `📦 *ORDER BARU (LANDING PAGE)*\n\n` +
+                                        `🛍️ Produk: ${productName}\n` +
                                         `💰 Total: Rp${price.toLocaleString('id-ID')}\n` +
-                                        `🏪 Toko: ${info.store_name}\n` +
-                                        `📍 Lokasi: http://google.com/maps?q=${pos.coords.latitude},${pos.coords.longitude}\n\n` +
-                                        `🚨 *Kurir Wilayah:* Ada pesanan baru, segera cek dashboard!`;
+                                        `📍 Lokasi: https://www.google.com/maps?q=${pos.coords.latitude},${pos.coords.longitude}`;
 
-                        await fetch(`https://api.telegram.org/bot${CONFIG.TELEGRAM_BOT_TOKEN || '8537812998:AAHEL4kqYY8mS4LLOuTZjbvf7vAnpusxjSM'}/sendMessage`, {
+                        await fetch(`https://api.telegram.org/bot8537812998:AAHEL4kqYY8mS4LLOuTZjbvf7vAnpusxjSM/sendMessage`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
@@ -85,18 +103,19 @@
                         });
                     }
 
-                    alert("✅ BERHASIL! Pesanan Anda sedang diproses oleh kurir wilayah.");
-                    
+                    alert("✅ BERHASIL! Pesanan diteruskan ke kurir wilayah.");
                 } catch (e) {
-                    alert("Gagal memproses pesanan: " + e.message);
+                    alert("Gagal: " + e.message);
                 } finally {
                     document.getElementById('loader').classList.add('hidden');
                 }
             }, (err) => {
                 document.getElementById('loader').classList.add('hidden');
-                alert("GPS Gagal: Pastikan fitur lokasi HP Anda sudah aktif.");
+                alert("GPS Gagal: Pastikan lokasi aktif.");
             }, { enableHighAccuracy: true });
         }
+
+        loadLandingProducts();
     </script>
 </body>
 </html>
