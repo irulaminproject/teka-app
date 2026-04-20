@@ -21,52 +21,53 @@
     </div>
 
     <div id="loader" class="fixed inset-0 bg-black/80 hidden flex flex-col items-center justify-center text-white z-50">
-        <div class="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <p class="font-bold italic">Sedang Memproses...</p>
+        <div class="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p class="font-bold italic text-lg text-yellow-400">Sedang Memproses...</p>
+        <p class="text-xs opacity-70">Harap jangan tutup halaman ini</p>
     </div>
 
     <script>
+        // Inisialisasi Supabase
         const supabaseClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY);
 
-        // 1. Fungsi Mengambil Produk Langsung dari Database
+        // 1. Fungsi Mengambil Produk dari Database (Sesuai Struktur Tabel Boss)
         async function loadLandingProducts() {
             const { data: products, error } = await supabaseClient
                 .from('products')
                 .select('id, name, price, store_id, stores(store_name)')
-                .eq('is_available', true)
-                .limit(5); // Ambil beberapa produk untuk landing page
+                .eq('is_available', true);
 
             const container = document.getElementById('product-list');
-            if (error || !products) {
-                container.innerHTML = '<p class="text-center text-red-500">Gagal memuat produk.</p>';
+            if (error || !products || products.length === 0) {
+                container.innerHTML = '<p class="text-center text-red-500">Gagal memuat produk atau produk kosong.</p>';
                 return;
             }
 
             container.innerHTML = products.map(p => `
-                <div class="bg-white p-4 rounded-3xl border shadow-sm flex items-center justify-between">
+                <div class="bg-white p-4 rounded-3xl border shadow-sm flex items-center justify-between transition-all active:scale-95">
                     <div>
                         <p class="text-[10px] font-bold text-blue-500 uppercase">${p.stores?.store_name || 'Toko TEKA'}</p>
                         <h3 class="font-bold text-slate-800">${p.name}</h3>
                         <p class="text-blue-600 font-bold">Rp${p.price.toLocaleString('id-ID')}</p>
                     </div>
                     <button onclick="orderNow(${p.price}, '${p.store_id}', '${p.name}')" 
-                            class="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold text-xs shadow-md active:scale-95 transition-all">
+                            class="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold text-xs shadow-md">
                         BELI
                     </button>
                 </div>
             `).join('');
         }
 
-        // 2. Fungsi Order dengan Notifikasi Otomatis
+        // 2. Fungsi Order Utama (GPS + Database + Invoice Telegram)
         async function orderNow(price, storeId, productName) {
-            const isReady = confirm("Aktifkan GPS HP Anda sekarang, lalu klik OK.");
+            const isReady = confirm(`Konfirmasi Pesanan:\n${productName}\nTotal: Rp${price.toLocaleString('id-ID')}\n\nPastikan GPS HP Anda aktif.`);
             if(!isReady) return;
 
             document.getElementById('loader').classList.remove('hidden');
 
             navigator.geolocation.getCurrentPosition(async (pos) => {
                 try {
-                    // Simpan ke Database
+                    // Simpan data order ke Supabase
                     const { data: order, error: orderErr } = await supabaseClient.from('orders').insert([{
                         total_price: price,
                         store_id: storeId,
@@ -77,44 +78,51 @@
 
                     if(orderErr) throw orderErr;
 
-                    // Ambil ID Grup Telegram Wilayah secara Otomatis
+                    // Ambil data Grup Telegram Wilayah secara dinamis
                     const { data: info } = await supabaseClient
                         .from('stores')
-                        .select('pangkalan(telegram_group_id)')
+                        .select('store_name, pangkalan(telegram_group_id)')
                         .eq('id', storeId)
                         .single();
 
                     const targetGroup = info?.pangkalan?.telegram_group_id;
 
+                    // Kirim Invoice Digital ke Grup Telegram
                     if (targetGroup) {
-                        const message = `📦 *ORDER BARU (LANDING PAGE)*\n\n` +
-                                        `🛍️ Produk: ${productName}\n` +
-                                        `💰 Total: Rp${price.toLocaleString('id-ID')}\n` +
-                                        `📍 Lokasi: https://www.google.com/maps?q=${pos.coords.latitude},${pos.coords.longitude}`;
+                        const invoice = `🧾 *INVOICE LANDING PAGE*\n` +
+                                        `ID: #LND-${order.id.slice(0, 8)}\n` +
+                                        `------------------------------------------\n` +
+                                        `🛍️ *Produk:* ${productName}\n` +
+                                        `💰 *Total:* Rp${price.toLocaleString('id-ID')}\n` +
+                                        `🏪 *Toko:* ${info.store_name}\n` +
+                                        `📍 *Lokasi:* [Klik Untuk Navigasi](https://www.google.com/maps?q=${pos.coords.latitude},${pos.coords.longitude})\n` +
+                                        `------------------------------------------\n` +
+                                        `🚀 _Segera kirim kurir wilayah!_`;
 
                         await fetch(`https://api.telegram.org/bot8537812998:AAHEL4kqYY8mS4LLOuTZjbvf7vAnpusxjSM/sendMessage`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                                 chat_id: targetGroup,
-                                text: message,
+                                text: invoice,
                                 parse_mode: "Markdown"
                             })
                         });
                     }
 
-                    alert("✅ BERHASIL! Pesanan diteruskan ke kurir wilayah.");
+                    alert("✅ BERHASIL! Pesanan Anda sudah masuk. Invoice telah dikirim ke kurir wilayah.");
                 } catch (e) {
-                    alert("Gagal: " + e.message);
+                    alert("Gagal memproses pesanan: " + e.message);
                 } finally {
                     document.getElementById('loader').classList.add('hidden');
                 }
             }, (err) => {
                 document.getElementById('loader').classList.add('hidden');
-                alert("GPS Gagal: Pastikan lokasi aktif.");
+                alert("GPS Gagal: Gagal mendapatkan lokasi. Harap izinkan akses lokasi di browser Anda.");
             }, { enableHighAccuracy: true });
         }
 
+        // Jalankan pengambilan produk saat halaman dibuka
         loadLandingProducts();
     </script>
 </body>
