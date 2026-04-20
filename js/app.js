@@ -16,9 +16,11 @@ async function initTeka() {
     const user = tg.initDataUnsafe?.user;
 
     if (user) {
+        // Tampilkan Nama User di UI
         const nameElement = document.getElementById('user-name');
         if (nameElement) nameElement.innerText = user.first_name;
         
+        // Tampilkan Foto jika ada
         if (user.photo_url) {
             const avatarContainer = document.getElementById('user-avatar');
             const photoElement = document.getElementById('user-photo');
@@ -34,6 +36,7 @@ async function initTeka() {
         }, { onConflict: 'telegram_id' });
     }
 
+    // Ambil daftar produk
     loadProducts();
 }
 
@@ -58,7 +61,8 @@ async function loadProducts() {
     }
 
     if (products && products.length > 0) {
-        container.innerHTML = ''; 
+        container.innerHTML = ''; // Bersihkan container
+
         products.forEach(item => {
             const productHTML = `
                 <div class="bg-white p-3 rounded-2xl shadow-sm border border-gray-100 flex flex-col">
@@ -83,19 +87,20 @@ async function loadProducts() {
     }
 }
 
+// Fungsi saat tombol "Beli" diklik (Memunculkan Tombol Kuning Telegram di bawah)
 function handleOrder(productId, productName, productPrice, storeId) {
     currentOrder = { id: productId, name: productName, price: productPrice, store_id: storeId };
     
-    tg.MainButton.setText(`PESAN ${productName.toUpperCase()} - Rp${productPrice.toLocaleString('id-ID')}`);
+    tg.MainButton.setText(`BAYAR: ${productName.toUpperCase()} - Rp${productPrice.toLocaleString('id-ID')}`);
     tg.MainButton.setParams({
-        color: '#FACC15',
+        color: '#FACC15', // Warna kuning
         text_color: '#000000'
     });
     tg.MainButton.show();
     tg.HapticFeedback.impactOccurred('medium');
 }
 
-// LOGIKA CHECKOUT & NOTIFIKASI OTOMATIS
+// Event Listener saat Tombol Utama Telegram (MainButton) diklik untuk Checkout & Invoice
 tg.MainButton.onClick(async () => {
     if (!currentOrder) return;
 
@@ -115,71 +120,57 @@ tg.MainButton.onClick(async () => {
         .eq('telegram_id', user.id)
         .single();
 
-    if (!profile) {
-        tg.showAlert("Profil tidak ditemukan. Coba refresh aplikasi.");
-        tg.MainButton.hideProgress();
-        return;
-    }
-
-    // 2. Simpan ke tabel orders
-    const { data: order, error: orderError } = await _supabase
-        .from('orders')
-        .insert({
-            buyer_id: profile.id,
-            store_id: currentOrder.store_id || null,
-            total_price: currentOrder.price,
-            status: 'pending'
-        })
-        .select()
-        .single();
-
-    if (orderError) {
-        tg.showAlert("Gagal memesan: " + orderError.message);
-        tg.MainButton.hideProgress();
-        return;
-    }
-
-    // 3. LOGIKA NOTIFIKASI DINAMIS BERDASARKAN WILAYAH
-    try {
-        // Cari ID Grup Telegram Wilayah dari relasi tabel stores -> pangkalan
-        const { data: info } = await _supabase
-            .from('stores')
-            .select(`
-                store_name,
-                pangkalan (telegram_group_id)
-            `)
-            .eq('id', currentOrder.store_id)
+    if (profile) {
+        // 2. Simpan ke tabel orders
+        const { data: order, error } = await _supabase
+            .from('orders')
+            .insert({
+                buyer_id: profile.id,
+                store_id: currentOrder.store_id || null,
+                total_price: currentOrder.price,
+                status: 'pending'
+            })
+            .select()
             .single();
 
-        const targetGroup = info?.pangkalan?.telegram_group_id;
+        if (!error) {
+            // 3. Ambil data Toko & Grup Wilayah untuk Invoice
+            const { data: info } = await _supabase
+                .from('stores')
+                .select('store_name, pangkalan(telegram_group_id)')
+                .eq('id', currentOrder.store_id)
+                .single();
 
-        // Jika grup wilayah ditemukan, kirim pesan ke sana
-        if (targetGroup) {
-            const message = `📦 *ORDER BARU MASUK*\n\n` +
-                            `👤 Pembeli: ${user.first_name}\n` +
-                            `🛍️ Produk: ${currentOrder.name}\n` +
-                            `💰 Total: Rp${currentOrder.price.toLocaleString('id-ID')}\n` +
-                            `🏪 Toko: ${info.store_name}\n\n` +
-                            `🚨 *Kurir Wilayah:* Harap segera diproses!`;
+            // 4. Kirim Invoice ke Grup Telegram Wilayah
+            if (info?.pangkalan?.telegram_group_id) {
+                const invoiceText = `🧾 *INVOICE DIGITAL #ORD-${order.id.slice(0, 8)}*\n` +
+                                    `------------------------------------------\n` +
+                                    `👤 *Pembeli:* ${user.first_name}\n` +
+                                    `🏪 *Toko:* ${info.store_name}\n` +
+                                    `🛍️ *Produk:* ${currentOrder.name}\n` +
+                                    `💰 *Total Bayar:* Rp${currentOrder.price.toLocaleString('id-ID')}\n` +
+                                    `------------------------------------------\n` +
+                                    `🕒 _Status: Menunggu Konfirmasi Kurir_`;
 
-            await fetch(`https://api.telegram.org/bot8537812998:AAHEL4kqYY8mS4LLOuTZjbvf7vAnpusxjSM/sendMessage`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    chat_id: targetGroup,
-                    text: message,
-                    parse_mode: "Markdown"
-                })
-            });
+                await fetch(`https://api.telegram.org/bot8537812998:AAHEL4kqYY8mS4LLOuTZjbvf7vAnpusxjSM/sendMessage`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: info.pangkalan.telegram_group_id,
+                        text: invoiceText,
+                        parse_mode: "Markdown"
+                    })
+                });
+            }
+
+            tg.HapticFeedback.notificationOccurred('success');
+            tg.showAlert(`Pesanan Berhasil! Invoice telah dikirim ke grup wilayah.`);
+            tg.MainButton.hide();
+        } else {
+            tg.showAlert("Gagal memesan: " + error.message);
         }
-
-        tg.HapticFeedback.notificationOccurred('success');
-        tg.showAlert(`Pesanan ${currentOrder.name} Berhasil! Notifikasi telah dikirim ke kurir wilayah.`);
-        tg.MainButton.hide();
-
-    } catch (err) {
-        console.error("Notif Error:", err);
-        tg.showAlert("Pesanan tercatat, namun notifikasi grup gagal terkirim.");
+    } else {
+        tg.showAlert("Profil tidak ditemukan. Coba refresh aplikasi.");
     }
     
     tg.MainButton.hideProgress();
