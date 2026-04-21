@@ -32,8 +32,6 @@ async function initTeka() {
 }
 
 async function loadProducts() {
-    console.log("Sedang mengambil data barang...");
-    
     const { data: products, error } = await _supabase
         .from('products')
         .select(`
@@ -42,22 +40,17 @@ async function loadProducts() {
             price, 
             image_url,
             store_id,
-            store_latitude,  /* Pastikan ini ditarik dari tabel products */
-            store_longitude, /* Pastikan ini ditarik dari tabel products */
+            store_latitude,
+            store_longitude,
             stores (id, store_name)
         `)
-        .eq('is_available', true); // Pastikan nama kolom di DB kamu benar 'is_available'
+        .eq('is_available', true);
 
-    // SESUAIKAN DENGAN ID DI INDEX.HTML
     const container = document.getElementById('product-list'); 
-    if (!container) {
-        console.error("ID product-list tidak ditemukan di HTML!");
-        return;
-    }
+    if (!container) return;
 
     if (error) {
         console.error("Fetch Error:", error.message);
-        container.innerHTML = `<p style="text-align:center; color:red;">Gagal memuat: ${error.message}</p>`;
         return;
     }
 
