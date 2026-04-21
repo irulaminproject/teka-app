@@ -6,14 +6,14 @@ let currentOrder = null;
 tg.ready();
 tg.expand();
 
-// Inisialisasi
-initApp();
+initTeka();
 
-async function initApp() {
+async function initTeka() {
     const user = tg.initDataUnsafe?.user;
     if (user) {
-        document.getElementById('user-info').innerText = `Halo, ${user.first_name} 👋`;
-        // Sync ke profiles
+        document.getElementById('user-name').innerText = `Halo, ${user.first_name}!`;
+        
+        // Simpan/Update Profile
         await _supabase.from('profiles').upsert({ 
             telegram_id: user.id.toString(), 
             full_name: `${user.first_name} ${user.last_name || ''}`
@@ -22,18 +22,10 @@ async function initApp() {
     loadProducts();
 }
 
-// Fungsi Minta Lokasi GPS Pembeli
-function getGPS() {
-    return new Promise((resolve) => {
-        if (!tg.getLocation) return resolve(null);
-        tg.getLocation((res) => resolve(res ? { lat: res.latitude, lon: res.longitude } : null));
-    });
-}
-
 async function loadProducts() {
-    const container = document.getElementById('product-list');
+    const container = document.getElementById('product-container');
     
-    // FIX: Ambil latitude/longitude dari tabel STORES (bukan products)
+    // AMBIL PRODUK + JOIN STORES (untuk dapat latitude & longitude toko)
     const { data: products, error } = await _supabase
         .from('products')
         .select(`
@@ -47,72 +39,64 @@ async function loadProducts() {
         return;
     }
 
-    container.innerHTML = '';
+    container.innerHTML = ''; // Bersihkan loading
     products.forEach(item => {
-        const card = document.createElement('div');
-        card.className = 'product-card';
-        card.onclick = () => {
-            // Simpan data order + koordinat toko hasil join
+        const div = document.createElement('div');
+        div.className = 'product-card';
+        div.onclick = () => {
+            // Simpan data ke state global
             currentOrder = {
                 ...item,
-                store_lat: item.stores?.latitude,
-                store_lon: item.stores?.longitude
+                s_lat: item.stores?.latitude,
+                s_lon: item.stores?.longitude
             };
-            tg.MainButton.setText(`PESAN ${item.name.toUpperCase()}`);
-            tg.MainButton.setParams({ color: '#FACC15', text_color: '#000000' });
+            tg.MainButton.setText(`BELI ${item.name.toUpperCase()} - Rp${item.price.toLocaleString()}`);
             tg.MainButton.show();
-            tg.HapticFeedback.impactOccurred('medium');
         };
 
-        card.innerHTML = `
-            <div class="product-img">
-                <img src="${item.image_url}" style="width:100%;height:100%;object-fit:cover;">
-            </div>
+        div.innerHTML = `
+            <img class="product-img" src="${item.image_url || 'https://via.placeholder.com/150'}">
             <div class="product-info">
-                <div class="store-tag">${item.stores?.store_name || 'Toko TEKA'}</div>
-                <div class="product-name">${item.name}</div>
-                <div class="product-price">Rp ${item.price.toLocaleString('id-ID')}</div>
+                <div style="font-size:12px; color:orange; font-weight:bold;">${item.stores?.store_name || 'Toko'}</div>
+                <div style="font-weight:bold;">${item.name}</div>
+                <div class="price">Rp${item.price.toLocaleString()}</div>
             </div>
         `;
-        container.appendChild(card);
+        container.appendChild(div);
     });
 }
 
-// PROSES CHECKOUT
 tg.MainButton.onClick(async () => {
     if (!currentOrder) return;
     tg.MainButton.showProgress();
 
-    // 1. Ambil GPS User
-    const gps = await getGPS();
+    // MINTA LOKASI USER (Biar gak null)
+    tg.getLocation(async (loc) => {
+        try {
+            const user = tg.initDataUnsafe?.user;
+            
+            const { error: orderError } = await _supabase.from('orders').insert({
+                customer_tg_id: user.id.toString(),
+                buyer_tg_id: user.id.toString(),
+                store_id: currentOrder.store_id,
+                total_price: currentOrder.price,
+                status: 'pending',
+                // Koordinat Toko (Hasil Join)
+                store_latitude: currentOrder.s_lat,
+                store_longitude: currentOrder.s_lon,
+                // Koordinat Pembeli (GPS)
+                dest_latitude: loc ? loc.latitude : null,
+                dest_longitude: loc ? loc.longitude : null
+            });
 
-    try {
-        const user = tg.initDataUnsafe?.user;
-        
-        // 2. Insert ke Tabel Orders
-        const { error: err } = await _supabase.from('orders').insert({
-            customer_tg_id: user.id.toString(),
-            buyer_tg_id: user.id.toString(),
-            store_id: currentOrder.store_id,
-            total_price: currentOrder.price,
-            status: 'pending',
-            // Koordinat Toko (Hasil Join tadi)
-            store_latitude: currentOrder.store_lat,
-            store_longitude: currentOrder.store_lon,
-            // Koordinat Pembeli (Dari GPS)
-            dest_latitude: gps ? gps.lat : null,
-            dest_longitude: gps ? gps.lon : null
-        });
+            if (orderError) throw orderError;
 
-        if (err) throw err;
-
-        tg.HapticFeedback.notificationOccurred('success');
-        tg.showAlert("Pesanan Berhasil! Lokasi toko dan lokasimu sudah tercatat. ✅");
-        tg.MainButton.hide();
-
-    } catch (e) {
-        tg.showAlert("Gagal: " + e.message);
-    } finally {
-        tg.MainButton.hideProgress();
-    }
+            tg.showAlert("Alhamdulillah, Pesanan Terkirim! ✅");
+            tg.MainButton.hide();
+        } catch (e) {
+            tg.showAlert("Gagal: " + e.message);
+        } finally {
+            tg.MainButton.hideProgress();
+        }
+    });
 });
