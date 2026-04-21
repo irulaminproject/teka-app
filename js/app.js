@@ -1,95 +1,84 @@
-// 1. Inisialisasi Telegram & Supabase
+// 1. Inisialisasi
 const tg = window.Telegram.WebApp;
 const _supabase = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY);
 
-// State Global
 let currentOrder = null;
 
-// Siapkan aplikasi
-tg.ready();
-tg.expand();
-
-// JALANKAN PROSES UTAMA
+// Jalankan App
 initTeka();
 
 async function initTeka() {
     const user = tg.initDataUnsafe?.user;
 
-    // 1. Tampilkan Profil User (Optional)
     if (user) {
-        const nameElement = document.getElementById('user-name');
-        if (nameElement) nameElement.innerText = user.first_name;
-        
-        // Simpan ke profiles (Backup pendaftaran selain dari Bot)
+        // Tampilkan info user
+        const infoDiv = document.getElementById('user-info');
+        if (infoDiv) infoDiv.innerText = `Halo, ${user.first_name}! 👋`;
+
+        // Auto-register ke profiles
         await _supabase.from('profiles').upsert({ 
             telegram_id: user.id.toString(), 
             full_name: `${user.first_name} ${user.last_name || ''}`
         }, { onConflict: 'telegram_id' });
     }
 
-    // 2. Ambil Daftar Produk
     loadProducts();
+}
+
+// Fungsi Ambil Izin Lokasi
+function requestLocation() {
+    return new Promise((resolve) => {
+        // Cek apakah fitur tersedia
+        if (!tg.getLocation) {
+            resolve(null);
+            return;
+        }
+        tg.getLocation((data) => {
+            if (data) {
+                resolve({ lat: data.latitude, lon: data.longitude });
+            } else {
+                resolve(null);
+            }
+        });
+    });
 }
 
 async function loadProducts() {
     const { data: products, error } = await _supabase
         .from('products')
-        .select(`
-            id, 
-            name, 
-            price, 
-            image_url,
-            store_id,
-            store_latitude,
-            store_longitude,
-            stores (id, store_name)
-        `)
-        .eq('is_available', true);
+        .select('id,name,price,image_url,store_id,store_latitude,store_longitude');
 
     const container = document.getElementById('product-list'); 
     if (!container) return;
 
     if (error) {
-        console.error("Fetch Error:", error.message);
+        container.innerHTML = `<p style="color:red;">Gagal: ${error.message}</p>`;
         return;
     }
 
     if (products && products.length > 0) {
-        container.innerHTML = ''; // Hapus skeleton loading
-
+        container.innerHTML = ''; 
         products.forEach(item => {
-            const productCard = document.createElement('div');
-            productCard.className = 'product-card';
-            productCard.onclick = () => handleOrder(item.id, item.name, item.price, item.stores?.id || '');
+            const card = document.createElement('div');
+            card.className = 'product-card';
+            card.onclick = () => {
+                currentOrder = item;
+                tg.MainButton.setText(`BELI ${item.name.toUpperCase()} - Rp ${item.price.toLocaleString('id-ID')}`);
+                tg.MainButton.show();
+            };
 
-            productCard.innerHTML = `
+            card.innerHTML = `
                 <div class="product-img">
-                    ${item.image_url ? `<img src="${item.image_url}" style="width:100%; height:100%; object-fit:cover; border-radius:12px;">` : '📦'}
+                    ${item.image_url ? `<img src="${item.image_url}" style="width:100%;height:100%;object-fit:cover;">` : '📦'}
                 </div>
                 <div class="product-info">
                     <div class="product-name">${item.name}</div>
                     <div class="product-price">Rp ${item.price.toLocaleString('id-ID')}</div>
-                    <div class="product-desc">${item.stores ? item.stores.store_name : 'Toko TEKA'}</div>
                 </div>
             `;
-            container.appendChild(productCard);
+            container.appendChild(card);
         });
-    } else {
-        container.innerHTML = '<div id="empty-state">Belum ada barang tersedia.</div>';
     }
-}
-
-// Fungsi saat produk diklik
-function handleOrder(productId, productName, productPrice, storeId) {
-    currentOrder = { id: productId, name: productName, price: productPrice, store_id: storeId };
-    
-    tg.MainButton.setText(`AMBIL ${productName.toUpperCase()} - Rp ${productPrice.toLocaleString('id-ID')}`);
-    tg.MainButton.setParams({
-        color: '#0088cc', 
-        text_color: '#ffffff'
-    });
-    tg.MainButton.show();
-    tg.HapticFeedback.impactOccurred('medium');
 }
 
 // Handler Checkout (Main Button)
@@ -98,11 +87,14 @@ tg.MainButton.onClick(async () => {
     
     tg.MainButton.showProgress();
     
+    // Minta Lokasi User
+    const userLoc = await requestLocation();
+    
     try {
         const user = tg.initDataUnsafe?.user;
         if (!user) throw new Error("User tidak terdeteksi");
 
-        const { data: order, error: orderError } = await _supabase
+        const { error: orderError } = await _supabase
             .from('orders')
             .insert({
                 customer_tg_id: user.id.toString(),
@@ -110,21 +102,21 @@ tg.MainButton.onClick(async () => {
                 store_id: currentOrder.store_id,
                 total_price: currentOrder.price,
                 status: 'pending',
-                
-                // TAMBAHKAN INI (Pastikan di database kolomnya bernama ini):
-                store_latitude: currentOrder.store_latitude, 
-                store_longitude: currentOrder.store_longitude
-            })
-            .select().single();
+                // Masukkan Koordinat Toko dari database produk
+                store_latitude: currentOrder.store_latitude,
+                store_longitude: currentOrder.store_longitude,
+                // Masukkan Koordinat Pembeli dari GPS
+                dest_latitude: userLoc ? userLoc.lat : null,
+                dest_longitude: userLoc ? userLoc.lon : null
+            });
 
         if (orderError) throw orderError;
 
-        tg.HapticFeedback.notificationOccurred('success');
-        tg.showAlert(`Sipp! Pesanan ${currentOrder.name} sedang diproses.`);
+        tg.showAlert("Pesanan berhasil dikirim! Kurir akan segera meluncur.");
         tg.MainButton.hide();
 
     } catch (err) {
-        tg.showAlert("Gagal: " + err.message);
+        tg.showAlert("Waduh, gagal: " + err.message);
     } finally {
         tg.MainButton.hideProgress();
     }
