@@ -1,6 +1,6 @@
 // 1. Inisialisasi Telegram & Supabase
 const tg = window.Telegram.WebApp;
-const _supabase = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+const _supabase = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY);
 
 // State Global
 let currentOrder = null;
