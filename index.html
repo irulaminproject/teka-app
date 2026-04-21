@@ -8,18 +8,15 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: sans-serif; background: #f4f4f4; margin: 0; padding: 15px; }
-        .product-card { background: white; padding: 15px; border-radius: 12px; margin-bottom: 10px; display: flex; gap: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        .product-img { width: 80px; height: 80px; border-radius: 8px; object-fit: cover; }
-        .product-info { flex: 1; }
+        .product-card { background: white; padding: 15px; border-radius: 12px; margin-bottom: 10px; display: flex; gap: 10px; cursor: pointer; border: 1px solid #ddd; }
+        .product-img { width: 70px; height: 70px; border-radius: 8px; object-fit: cover; }
         .price { font-weight: bold; color: #0088cc; }
         #product-container { display: flex; flex-direction: column; }
     </style>
 </head>
 <body>
     <h3 id="user-name">Memuat...</h3>
-    <div id="product-container">
-        <p>Sedang memuat produk...</p>
-    </div>
+    <div id="product-container">Sedang mengambil data barang...</div>
 
     <script src="js/config.js"></script>
     <script src="js/app.js"></script>
