@@ -1,155 +1,95 @@
 // ==========================================
-// 1. INISIALISASI DASAR (TELEGRAM & SUPABASE)
+// 1. DATA INITIALIZATION (MENGGUNAKAN CONFIG.JS)
 // ==========================================
 const tg = window.Telegram.WebApp;
-const _supabase = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY);
-
-// State untuk menyimpan data produk yang sedang dipilih
-let currentOrder = null;
-
-// Beritahu Telegram kalau aplikasi siap digunakan
-tg.ready();
 tg.expand();
 
-// Jalankan fungsi utama saat aplikasi dibuka
-initTeka();
+// State Aplikasi
+let currentOrder = null;
+let userProfile = null;
+let allStores = [];
+let categories = [];
 
 // ==========================================
-// 2. FUNGSI UTAMA (INIT & SYNC USER)
+// 2. FUNGSI PENGENAL IDENTITAS (BIAR GAK AMNESIA)
 // ==========================================
-// Fungsi untuk cek identitas saat startup
 async function checkIdentity() {
     const user = tg.initDataUnsafe?.user;
     
-    if (user) {
-        document.getElementById('debug-name').innerText = user.first_name || 'Tidak ada nama';
-        document.getElementById('debug-id').innerText = user.id || 'Tidak ada ID';
+    // Update Tampilan Debug di HTML jika ada
+    const debugName = document.getElementById('debug-name');
+    const debugId = document.getElementById('debug-id');
+    const debugUuid = document.getElementById('debug-uuid');
 
-        // Coba cari di database Supabase
-        const { data: profile, error } = await _supabase
+    if (user) {
+        if (debugName) debugName.innerText = user.first_name;
+        if (debugId) debugId.innerText = user.id;
+
+        // Ambil UUID dari database agar buyer_id tidak NULL
+        const { data: profile } = await _supabase
             .from('profiles')
             .select('id')
             .eq('telegram_id', user.id)
             .single();
 
         if (profile) {
-            document.getElementById('debug-uuid').innerText = profile.id;
-            // Simpan ke window agar bisa dipakai fungsi checkout nanti
-            window.currentUserProfile = profile; 
-            console.log("Profile ditemukan:", profile.id);
+            userProfile = profile;
+            if (debugUuid) debugUuid.innerText = profile.id;
         } else {
-            document.getElementById('debug-uuid').innerText = "Belum terdaftar di DB";
-            console.error("Profile Error:", error?.message);
+            if (debugUuid) debugUuid.innerText = "Belum Terdaftar";
         }
-    } else {
-        document.getElementById('debug-name').innerText = "Gagal baca initData";
     }
 }
 
-// Jalankan fungsinya
-checkIdentity();
-
-async function initTeka() {
-    const user = tg.initDataUnsafe?.user;
-
-    if (user) {
-        // Tampilkan Identitas User di UI (Jika elemen ID ada di HTML)
-        const nameElement = document.getElementById('user-name');
-        if (nameElement) {
-            nameElement.innerText = user.first_name;
-        }
-        
-        const avatarContainer = document.getElementById('user-avatar');
-        const photoElement = document.getElementById('user-photo');
-        if (user.photo_url && avatarContainer && photoElement) {
-            avatarContainer.classList.remove('hidden');
-            photoElement.src = user.photo_url;
-        }
-
-        // Simpan atau Perbarui data user ke tabel Profiles di Supabase
-        await _supabase.from('profiles').upsert({ 
-            telegram_id: user.id, 
-            full_name: `${user.first_name} ${user.last_name || ''}`,
-            role: 'user'
-        }, { onConflict: 'telegram_id' });
-    }
-
-    // Lanjut ambil daftar produk untuk dipajang
-    loadProducts();
+// ==========================================
+// 3. LOGIKA RENDER TOKO & PRODUK (OPERASIONAL)
+// ==========================================
+async function loadAppData() {
+    // Ambil data Toko, Produk, dan Kategori secara utuh
+    const { data: stores } = await _supabase.from('stores').select('*, pangkalan(*)');
+    const { data: cats } = await _supabase.from('categories').select('*');
+    
+    allStores = stores || [];
+    categories = cats || [];
+    
+    renderCategories();
+    renderStores(allStores);
 }
 
-// ==========================================
-// 3. FUNGSI LOAD PRODUK DARI DATABASE
-// ==========================================
-async function loadProducts() {
-    const { data: products, error } = await _supabase
-        .from('products')
-        .select(`
-            id, 
-            name, 
-            price, 
-            image_url,
-            stores (id, store_name)
-        `)
-        .eq('is_available', true);
-
-    const container = document.getElementById('product-container');
+function renderCategories() {
+    const container = document.getElementById('category-container');
     if (!container) return;
+    container.innerHTML = categories.map(cat => `
+        <div class="category-card" onclick="filterByCategory('${cat.id}')">
+            <img src="${cat.icon_url}" />
+            <span>${cat.name}</span>
+        </div>
+    `).join('');
+}
 
-    if (error) {
-        console.error("Gagal mengambil produk:", error.message);
-        container.innerHTML = `<p class="text-center text-red-500">Gagal memuat produk.</p>`;
-        return;
-    }
-
-    if (products && products.length > 0) {
-        container.innerHTML = ''; // Kosongkan loader
-
-        products.forEach(item => {
-            const productHTML = `
-                <div class="bg-white p-3 rounded-2xl shadow-sm border border-gray-100 flex flex-col">
-                    <div class="w-full h-32 bg-gray-100 rounded-xl mb-3 overflow-hidden">
-                        <img src="${item.image_url || 'https://via.placeholder.com/150'}" class="w-full h-full object-cover">
-                    </div>
-                    <p class="text-[10px] font-bold text-yellow-600 uppercase mb-1">
-                        ${item.stores ? item.stores.store_name : 'Toko TEKA'}
-                    </p>
-                    <h3 class="font-bold text-sm text-gray-800 leading-tight mb-3">${item.name}</h3>
-                    <div class="flex justify-between items-center mt-auto">
-                        <span class="font-black text-sm text-gray-900">Rp${item.price.toLocaleString('id-ID')}</span>
-                        <button onclick="handleOrder('${item.id}', '${item.name}', ${item.price}, '${item.stores?.id || ''}')" 
-                                class="bg-yellow-400 hover:bg-yellow-500 text-black px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-colors">
-                            Beli
-                        </button>
-                    </div>
-                </div>
-            `;
-            container.innerHTML += productHTML;
-        });
-    } else {
-        container.innerHTML = `<p class="text-center text-gray-400 py-10">Belum ada produk tersedia.</p>`;
-    }
+function renderStores(storesToRender) {
+    const container = document.getElementById('store-container');
+    if (!container) return;
+    container.innerHTML = storesToRender.map(store => `
+        <div class="store-card" onclick="showStoreDetail('${store.id}')">
+            <h3>${store.store_name}</h3>
+            <p>${store.address}</p>
+        </div>
+    `).join('');
 }
 
 // ==========================================
-// 4. FUNGSI HANDLING KLIK BELI
+// 4. FUNGSI SELEKSI PRODUK
 // ==========================================
-function handleOrder(productId, productName, productPrice, storeId) {
-    // Simpan data ke variabel global agar bisa diakses saat Checkout
-    currentOrder = { id: productId, name: productName, price: productPrice, store_id: storeId };
+function selectProduct(name, price, storeId) {
+    currentOrder = { name, price, store_id: storeId };
     
-    // Konfigurasi Tombol Utama Telegram (MainButton)
-    tg.MainButton.setText(`KONFIRMASI: ${productName.toUpperCase()} - Rp${productPrice.toLocaleString('id-ID')}`);
     tg.MainButton.setParams({
-        color: '#FACC15',
-        text_color: '#000000'
+        text: `BELI ${name.toUpperCase()} (Rp${price.toLocaleString('id-ID')})`,
+        color: '#2ecc71',
+        is_visible: true
     });
-    tg.MainButton.show();
-    
-    // Getar HP user sedikit (Haptic Feedback)
-    tg.HapticFeedback.impactOccurred('medium');
 }
-
 
 // ==========================================
 // 5. FUNGSI CHECKOUT & DOUBLE NOTIFICATION (INVOICE)
@@ -157,7 +97,6 @@ function handleOrder(productId, productName, productPrice, storeId) {
 tg.MainButton.onClick(async () => {
     if (!currentOrder) return;
 
-    // Tampilkan loading di MainButton agar user tidak klik berkali-kali
     tg.MainButton.showProgress(); 
     
     const user = tg.initDataUnsafe?.user;
@@ -167,14 +106,18 @@ tg.MainButton.onClick(async () => {
         return;
     }
 
-    // A. Ambil ID Internal Profile Supabase
-    const { data: profile, error: profileError } = await _supabase
-        .from('profiles')
-        .select('id')
-        .eq('telegram_id', user.id)
-        .single();
+    // A. Ambil ID Internal Profile (Pastikan tidak null)
+    let profile = userProfile;
+    if (!profile) {
+        const { data: p } = await _supabase
+            .from('profiles')
+            .select('id')
+            .eq('telegram_id', user.id)
+            .single();
+        profile = p;
+    }
 
-    if (profileError || !profile) {
+    if (!profile) {
         tg.showAlert("Data profil tidak ditemukan. Harap refresh aplikasi.");
         tg.MainButton.hideProgress();
         return;
@@ -184,7 +127,7 @@ tg.MainButton.onClick(async () => {
     const { data: order, error: orderError } = await _supabase
         .from('orders')
         .insert({
-            buyer_id: profile.id, // PASTIKAN INI TERISI DARI HASIL QUERY DI ATAS
+            buyer_id: profile.id,
             store_id: currentOrder.store_id || null,
             total_price: currentOrder.price,
             status: 'pending'
@@ -216,7 +159,7 @@ tg.MainButton.onClick(async () => {
                            `------------------------------------------\n` +
                            `🕒 _Status: Menunggu Konfirmasi Kurir_`;
 
-    // E. KIRIM KE GRUP KURIR (OPERASIONAL)
+    // E. KIRIM KE GRUP KURIR
     const targetGroup = storeInfo?.pangkalan?.telegram_group_id;
     if (targetGroup) {
         await fetch(`https://api.telegram.org/bot8537812998:AAHEL4kqYY8mS4LLOuTZjbvf7vAnpusxjSM/sendMessage`, {
@@ -235,15 +178,22 @@ tg.MainButton.onClick(async () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            chat_id: user.id, // Kirim ke chat pribadi pembeli
+            chat_id: user.id, 
             text: invoiceContent,
             parse_mode: "Markdown"
         })
     });
 
-    // G. SELESAI
     tg.HapticFeedback.notificationOccurred('success');
-    tg.showAlert(`Pesanan ${currentOrder.name} Berhasil! Invoice telah dikirim ke chat Telegram Anda.`);
+    tg.showAlert(`Pesanan Berhasil! Invoice dikirim.`);
     tg.MainButton.hide();
     tg.MainButton.hideProgress();
 });
+
+// ==========================================
+// 6. JALANKAN SEMUA SAAT STARTUP
+// ==========================================
+window.onload = () => {
+    checkIdentity();
+    loadAppData();
+};
