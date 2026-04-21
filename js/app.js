@@ -118,7 +118,7 @@ tg.MainButton.onClick(async () => {
         const { data: order, error: orderError } = await _supabase
             .from('orders')
             .insert({
-                buyer_tg_id: user.id.toString(), // Inilah "Pelacak" sakti kita
+                customer_tg_id: user.id.toString(), // Inilah "Pelacak" sakti kita
                 store_id: currentOrder.store_id,
                 total_price: currentOrder.price,
                 status: 'pending'
