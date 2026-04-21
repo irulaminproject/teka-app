@@ -12,6 +12,35 @@ tg.expand();
 // Jalankan fungsi utama
 initTeka();
 
+// Jalankan saat app dibuka
+async function initApp() {
+    try {
+        // Ambil data produk dari Supabase
+        const { data: products, error } = await _supabase
+            .from('products')
+            .select('*')
+            .eq('is_active', true); // Pastikan barangnya aktif
+
+        if (error) throw error;
+
+        // Kirim data ke fungsi render di HTML
+        renderProducts(products);
+
+    } catch (err) {
+        console.error("Gagal load produk:", err);
+    }
+}
+
+// Fungsi saat barang diklik
+function selectProduct(item) {
+    currentOrder = item; // Simpan barang yang dipilih
+    tg.MainButton.setText(`AMBIL ${item.name.toUpperCase()}`);
+    tg.MainButton.show();
+}
+
+// Panggil init
+initApp();
+
 async function initTeka() {
     const user = tg.initDataUnsafe?.user;
 
