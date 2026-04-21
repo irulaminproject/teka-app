@@ -113,7 +113,11 @@ tg.MainButton.onClick(async () => {
                 buyer_tg_id: user.id.toString(),
                 store_id: currentOrder.store_id,
                 total_price: currentOrder.price,
-                status: 'pending'
+                status: 'pending',
+                
+                // TAMBAHKAN INI (Pastikan di database kolomnya bernama ini):
+                store_latitude: currentOrder.store_latitude, 
+                store_longitude: currentOrder.store_longitude
             })
             .select().single();
 
