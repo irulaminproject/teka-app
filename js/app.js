@@ -76,26 +76,64 @@ function requestUserLocation() {
  * Mengambil Daftar Produk dari Supabase
  */
 async function loadProducts() {
-    const container = document.getElementById('product-list');
-    
-    try {
-        const { data: products, error } = await _supabase
-            .from('products')
-            .select('id, name, price, image_url, store_id, store_latitude, store_longitude, description')
-            .eq('is_available', true);
+    const { data: products, error } = await _supabase
+        .from('products')
+        .select(`
+            id, 
+            name, 
+            price, 
+            image_url, 
+            description,
+            store_id,
+            stores (
+                id, 
+                store_name, 
+                store_latitude, 
+                store_longitude
+            )
+        `)
+        .eq('is_available', true);
 
-        if (error) throw error;
+    const container = document.getElementById('product-list'); 
+    if (!container) return;
 
-        if (products && products.length > 0) {
-            allProducts = products;
-            renderProductCards(products);
-        } else {
-            container.innerHTML = '<div style="text-align:center; padding:50px; color:#999;">Belum ada produk yang tersedia hari ini.</div>';
-        }
+    if (error) {
+        console.error("Fetch Error:", error.message);
+        container.innerHTML = `<p style="color:red; padding:20px;">Gagal: ${error.message}</p>`;
+        return;
+    }
 
-    } catch (err) {
-        console.error("❌ Gagal load produk:", err.message);
-        container.innerHTML = `<div style="color:red; padding:20px;">Error: ${err.message}</div>`;
+    if (products && products.length > 0) {
+        container.innerHTML = ''; 
+        products.forEach(item => {
+            const card = document.createElement('div');
+            card.className = 'product-card';
+            
+            // Perhatikan cara ambil koordinat dari relasi stores:
+            card.onclick = () => {
+                currentOrder = {
+                    ...item,
+                    // Kita pindahkan koordinat dari stores ke currentOrder agar mudah diakses saat insert
+                    store_latitude: item.stores?.store_latitude,
+                    store_longitude: item.stores?.store_longitude
+                };
+                
+                tg.MainButton.setText(`AMBIL ${item.name.toUpperCase()} - Rp ${item.price.toLocaleString('id-ID')}`);
+                tg.MainButton.show();
+            };
+
+            card.innerHTML = `
+                <div class="product-img">
+                    ${item.image_url ? `<img src="${item.image_url}" style="width:100%;height:100%;object-fit:cover;">` : '📦'}
+                </div>
+                <div class="product-info">
+                    <div class="product-name">${item.name}</div>
+                    <div class="product-price">Rp ${item.price.toLocaleString('id-ID')}</div>
+                    <div class="product-meta">${item.stores?.store_name || 'Toko TEKA'}</div>
+                </div>
+            `;
+            container.appendChild(card);
+        });
     }
 }
 
