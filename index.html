@@ -3,17 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TEKA-App | Smart Shopping</title>
+    <title>TEKA-App | Smart Delivery</title>
     
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
     
     <style>
         :root {
-            --primary: #0088cc;
-            --bg: #f4f7f9;
+            --primary: #FACC15; /* Kuning TEKA */
+            --primary-dark: #ccac00;
+            --bg: #f8fafc;
             --card: #ffffff;
-            --text-main: #1a1a1a;
-            --text-muted: #7a7a7a;
+            --text-dark: #0f172a;
+            --text-light: #64748b;
+        }
+
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
         }
 
         body {
@@ -21,99 +27,122 @@
             background-color: var(--bg);
             margin: 0;
             padding: 0;
-            color: var(--text-main);
-            -webkit-tap-highlight-color: transparent;
+            color: var(--text-dark);
+            overflow-x: hidden;
         }
 
+        /* Header Styles */
         header {
-            padding: 20px;
             background: var(--card);
-            border-bottom: 1px solid #eef0f2;
+            padding: 20px 16px;
+            border-bottom: 1px solid #e2e8f0;
             position: sticky;
             top: 0;
-            z-index: 100;
+            z-index: 1000;
+        }
+
+        .header-top {
             display: flex;
-            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
         }
 
-        .header-title {
+        .brand {
             font-weight: 800;
-            font-size: 22px;
+            font-size: 24px;
+            color: var(--text-dark);
             letter-spacing: -0.5px;
-            color: var(--primary);
         }
 
-        .header-subtitle {
+        .brand span {
+            color: var(--primary-dark);
+        }
+
+        #user-info {
             font-size: 13px;
-            color: var(--text-muted);
-            margin-top: 4px;
+            font-weight: 600;
+            color: var(--text-light);
         }
 
-        .container {
+        /* Category Filter Styles */
+        .category-container {
+            display: flex;
+            overflow-x: auto;
+            gap: 10px;
             padding: 16px;
+            scrollbar-width: none; /* Firefox */
+        }
+        .category-container::-webkit-scrollbar { display: none; } /* Chrome/Safari */
+
+        .cat-pill {
+            background: var(--card);
+            padding: 8px 18px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 700;
+            white-space: nowrap;
+            border: 1px solid #e2e8f0;
+            color: var(--text-light);
+            transition: all 0.2s;
+        }
+
+        .cat-pill.active {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: var(--text-dark);
+            box-shadow: 0 4px 10px rgba(250, 204, 21, 0.3);
+        }
+
+        /* Main Content */
+        .container {
+            padding: 0 16px 100px 16px;
             max-width: 600px;
             margin: 0 auto;
         }
 
-        /* Category Pill Styles */
-        .category-scroll {
+        .section-title {
+            font-weight: 800;
+            font-size: 18px;
+            margin-bottom: 16px;
             display: flex;
-            overflow-x: auto;
-            gap: 10px;
-            padding-bottom: 15px;
-            scrollbar-width: none;
-        }
-        .category-scroll::-webkit-scrollbar { display: none; }
-
-        .pill {
-            background: var(--card);
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-size: 13px;
-            font-weight: 600;
-            white-space: nowrap;
-            border: 1px solid #eef0f2;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+            align-items: center;
+            gap: 8px;
         }
 
-        .pill.active {
-            background: var(--primary);
-            color: white;
-            border-color: var(--primary);
-        }
-
-        /* Product Card Styles */
+        /* Product Grid */
         .product-grid {
             display: grid;
             grid-template-columns: 1fr;
-            gap: 12px;
+            gap: 14px;
         }
 
         .product-card {
             background: var(--card);
-            border-radius: 16px;
-            padding: 16px;
+            border-radius: 20px;
+            padding: 12px;
             display: flex;
             align-items: center;
-            gap: 15px;
-            border: 1px solid rgba(0,0,0,0.03);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.03);
-            transition: transform 0.1s ease;
+            gap: 16px;
+            border: 1px solid #f1f5f9;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.02);
+            transition: transform 0.1s;
         }
 
         .product-card:active {
-            transform: scale(0.98);
+            transform: scale(0.97);
         }
 
         .product-img {
-            width: 70px;
-            height: 70px;
-            background: #f0f2f5;
-            border-radius: 12px;
+            width: 85px;
+            height: 85px;
+            background: #f1f5f9;
+            border-radius: 16px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 30px;
+            font-size: 32px;
+            overflow: hidden;
+            flex-shrink: 0;
         }
 
         .product-info {
@@ -124,27 +153,30 @@
             font-weight: 700;
             font-size: 16px;
             margin-bottom: 4px;
+            color: var(--text-dark);
         }
 
         .product-price {
-            font-weight: 600;
-            color: var(--primary);
+            font-weight: 800;
+            color: #0369a1;
             font-size: 15px;
         }
 
-        .product-desc {
-            font-size: 12px;
-            color: var(--text-muted);
+        .product-meta {
+            font-size: 11px;
+            color: var(--text-light);
             margin-top: 4px;
+            font-weight: 500;
         }
 
-        /* Loading Skeleton */
+        /* Skeleton Loading */
         .skeleton {
-            height: 100px;
-            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+            background: linear-gradient(90deg, #eff1f3 25%, #e2e8f0 50%, #eff1f3 75%);
             background-size: 200% 100%;
             animation: loading 1.5s infinite;
-            border-radius: 16px;
+            height: 100px;
+            border-radius: 20px;
+            margin-bottom: 12px;
         }
 
         @keyframes loading {
@@ -155,26 +187,34 @@
         #empty-state {
             text-align: center;
             padding: 40px 20px;
-            color: var(--text-muted);
+            color: var(--text-light);
         }
     </style>
 </head>
 <body>
 
     <header>
-        <div class="header-title">TEKA-App</div>
-        <div class="header-subtitle">Belanja jadi lebih mudah & brutal ⚡</div>
+        <div class="header-top">
+            <div class="brand">TEKA<span>App</span></div>
+            <div id="user-info">Halo, Boss! 👋</div>
+        </div>
     </header>
 
-    <div class="container">
-        <div class="category-scroll">
-            <div class="pill active">Semua</div>
-            <div class="pill">Makanan</div>
-            <div class="pill">Kebutuhan</div>
-            <div class="pill">Elektronik</div>
-        </div>
+    <div class="category-container">
+        <div class="cat-pill active">Semua</div>
+        <div class="cat-pill">Makanan</div>
+        <div class="cat-pill">Mart</div>
+        <div class="cat-pill">Elektronik</div>
+        <div class="cat-pill">Lainnya</div>
+    </div>
 
+    <div class="container">
+        <div class="section-title">
+            <span>🔥</span> Produk Terlaris
+        </div>
+        
         <div id="product-list" class="product-grid">
+            <div class="skeleton"></div>
             <div class="skeleton"></div>
             <div class="skeleton"></div>
             <div class="skeleton"></div>
@@ -187,40 +227,11 @@
     <script src="js/app.js"></script>
 
     <script>
-        // Init Telegram WebApp
-        const tg = window.Telegram.WebApp;
-        tg.expand();
-        
-        // Atur warna sesuai tema user
-        document.documentElement.style.setProperty('--primary', tg.themeParams.button_color || '#0088cc');
-        
-        // Fungsi untuk merender produk ke HTML
-        // (Dipanggil nanti dari app.js setelah fetch data)
-        function renderProducts(products) {
-            const container = document.getElementById('product-list');
-            container.innerHTML = '';
-
-            if (products.length === 0) {
-                container.innerHTML = '<div id="empty-state">Belum ada barang tersedia saat ini.</div>';
-                return;
-            }
-
-            products.forEach(item => {
-                const card = document.createElement('div');
-                card.className = 'product-card';
-                card.onclick = () => selectProduct(item); // Fungsi di app.js
-
-                card.innerHTML = `
-                    <div class="product-img">📦</div>
-                    <div class="product-info">
-                        <div class="product-name">${item.name}</div>
-                        <div class="product-price">Rp ${Number(item.price).toLocaleString('id-ID')}</div>
-                        <div class="product-desc">${item.description || 'Barang berkualitas untukmu.'}</div>
-                    </div>
-                `;
-                container.appendChild(card);
-            });
-        }
+        // Inisialisasi awal agar Telegram TWA smooth
+        const webapp = window.Telegram.WebApp;
+        webapp.ready();
+        webapp.expand();
+        webapp.setHeaderColor('bg_color');
     </script>
 </body>
 </html>
