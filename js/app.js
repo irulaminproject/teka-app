@@ -41,6 +41,9 @@ async function loadProducts() {
             name, 
             price, 
             image_url,
+            store_id,
+            store_latitude,  /* Pastikan ini ditarik dari tabel products */
+            store_longitude, /* Pastikan ini ditarik dari tabel products */
             stores (id, store_name)
         `)
         .eq('is_available', true); // Pastikan nama kolom di DB kamu benar 'is_available'
