@@ -17,6 +17,38 @@ initTeka();
 // ==========================================
 // 2. FUNGSI UTAMA (INIT & SYNC USER)
 // ==========================================
+// Fungsi untuk cek identitas saat startup
+async function checkIdentity() {
+    const user = tg.initDataUnsafe?.user;
+    
+    if (user) {
+        document.getElementById('debug-name').innerText = user.first_name || 'Tidak ada nama';
+        document.getElementById('debug-id').innerText = user.id || 'Tidak ada ID';
+
+        // Coba cari di database Supabase
+        const { data: profile, error } = await _supabase
+            .from('profiles')
+            .select('id')
+            .eq('telegram_id', user.id)
+            .single();
+
+        if (profile) {
+            document.getElementById('debug-uuid').innerText = profile.id;
+            // Simpan ke window agar bisa dipakai fungsi checkout nanti
+            window.currentUserProfile = profile; 
+            console.log("Profile ditemukan:", profile.id);
+        } else {
+            document.getElementById('debug-uuid').innerText = "Belum terdaftar di DB";
+            console.error("Profile Error:", error?.message);
+        }
+    } else {
+        document.getElementById('debug-name').innerText = "Gagal baca initData";
+    }
+}
+
+// Jalankan fungsinya
+checkIdentity();
+
 async function initTeka() {
     const user = tg.initDataUnsafe?.user;
 
