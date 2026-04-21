@@ -119,6 +119,7 @@ tg.MainButton.onClick(async () => {
             .from('orders')
             .insert({
                 customer_tg_id: user.id.toString(), // Inilah "Pelacak" sakti kita
+                buyer_tg_id: user.id.toString(),
                 store_id: currentOrder.store_id,
                 total_price: currentOrder.price,
                 status: 'pending'
