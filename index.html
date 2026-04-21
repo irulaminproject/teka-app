@@ -3,45 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TEKA-App | Smart Marketplace</title>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <title>TEKA App</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        :root { --primary: #FACC15; --bg: #f8fafc; --card: #ffffff; --text: #0f172a; }
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); margin: 0; color: var(--text); }
-        header { background: var(--card); padding: 20px 16px; border-bottom: 1px solid #e2e8f0; position: sticky; top: 0; z-index: 100; display: flex; justify-content: space-between; align-items: center; }
-        .brand { font-weight: 800; font-size: 22px; }
-        .brand span { color: #ccac00; }
-        #user-info { font-size: 12px; font-weight: 600; color: #64748b; }
-        .container { padding: 16px; max-width: 600px; margin: 0 auto; }
-        .product-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
-        .product-card { background: var(--card); border-radius: 20px; padding: 12px; display: flex; align-items: center; gap: 15px; border: 1px solid #f1f5f9; box-shadow: 0 4px 10px rgba(0,0,0,0.02); cursor: pointer; }
-        .product-img { width: 80px; height: 80px; background: #f1f5f9; border-radius: 16px; overflow: hidden; flex-shrink: 0; }
-        .product-info { flex-grow: 1; }
-        .product-name { font-weight: 700; font-size: 16px; margin-bottom: 2px; }
-        .product-price { font-weight: 800; color: #0369a1; font-size: 15px; }
-        .store-tag { font-size: 11px; color: #f59e0b; font-weight: 700; text-transform: uppercase; }
-        .skeleton { height: 100px; background: #eee; border-radius: 20px; margin-bottom: 12px; animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        body { font-family: sans-serif; background: #f4f4f4; margin: 0; padding: 15px; }
+        .product-card { background: white; padding: 15px; border-radius: 12px; margin-bottom: 10px; display: flex; gap: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .product-img { width: 80px; height: 80px; border-radius: 8px; object-fit: cover; }
+        .product-info { flex: 1; }
+        .price { font-weight: bold; color: #0088cc; }
+        #product-container { display: flex; flex-direction: column; }
     </style>
 </head>
 <body>
-    <header>
-        <div class="brand">TEKA<span>App</span></div>
-        <div id="user-info">Memuat...</div>
-    </header>
-
-    <div class="container">
-        <div style="font-weight: 800; margin-bottom: 15px;">🔥 Menu Hari Ini</div>
-        <div id="product-list" class="product-grid">
-            <div class="skeleton"></div>
-            <div class="skeleton"></div>
-            <div class="skeleton"></div>
-        </div>
+    <h3 id="user-name">Memuat...</h3>
+    <div id="product-container">
+        <p>Sedang memuat produk...</p>
     </div>
 
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/config.js"></script>
     <script src="js/app.js"></script>
 </body>
