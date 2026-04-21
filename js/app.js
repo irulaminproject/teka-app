@@ -103,44 +103,40 @@ function handleOrder(productId, productName, productPrice, storeId) {
 // Event Listener saat Tombol Utama Telegram (MainButton) diklik untuk Checkout
 tg.MainButton.onClick(async () => {
     if (!currentOrder) return;
-
-    tg.MainButton.showProgress(); // Tampilkan loading di tombol
     
-    const user = tg.initDataUnsafe?.user;
-    if (!user) {
-        tg.showAlert("Gunakan Telegram untuk memesan.");
-        tg.MainButton.hideProgress();
-        return;
-    }
+    tg.MainButton.showProgress(); // Tombol mulai loading
+    
+    try {
+        const user = tg.initDataUnsafe?.user;
+        if (!user) {
+            tg.showAlert("Otentikasi Telegram gagal.");
+            return;
+        }
 
-    // 1. Ambil UUID Profile User
-    const { data: profile } = await _supabase
-        .from('profiles')
-        .select('id')
-        .eq('telegram_id', user.id)
-        .single();
-
-    if (profile) {
-        // 2. Simpan ke tabel orders
-        const { error } = await _supabase
+        // LANGSUNG INSERT: Pakai ID Telegram sebagai pelacak
+        // Kita tidak butuh lagi mencari profiles.id di sini!
+        const { data: order, error: orderError } = await _supabase
             .from('orders')
             .insert({
-                buyer_id: profile.id,
-                store_id: currentOrder.store_id || null, // Pastikan ada store_id
+                buyer_tg_id: user.id.toString(), // Inilah "Pelacak" sakti kita
+                store_id: currentOrder.store_id,
                 total_price: currentOrder.price,
                 status: 'pending'
-            });
+            })
+            .select().single();
 
-        if (!error) {
-            tg.HapticFeedback.notificationOccurred('success');
-            tg.showAlert(`Pesanan ${currentOrder.name} Berhasil! Silakan tunggu konfirmasi kurir.`);
-            tg.MainButton.hide();
-        } else {
-            tg.showAlert("Gagal memesan: " + error.message);
-        }
-    } else {
-        tg.showAlert("Profil tidak ditemukan. Coba refresh aplikasi.");
+        if (orderError) throw orderError;
+
+        // Feedback sukses
+        tg.HapticFeedback.notificationOccurred('success');
+        tg.showAlert(`Pesanan ${currentOrder.name} Berhasil dikirim!`);
+        tg.MainButton.hide();
+
+    } catch (err) {
+        console.error("Detail Error:", err);
+        tg.showAlert("Waduh, gagal kirim pesanan: " + err.message);
+    } finally {
+        // MAU BERHASIL ATAU GAGAL, LOADING HARUS BERHENTI
+        tg.MainButton.hideProgress();
     }
-    
-    tg.MainButton.hideProgress();
 });
