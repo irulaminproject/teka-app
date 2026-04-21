@@ -118,6 +118,7 @@ function handleOrder(productId, productName, productPrice, storeId) {
     tg.HapticFeedback.impactOccurred('medium');
 }
 
+
 // ==========================================
 // 5. FUNGSI CHECKOUT & DOUBLE NOTIFICATION (INVOICE)
 // ==========================================
@@ -151,12 +152,12 @@ tg.MainButton.onClick(async () => {
     const { data: order, error: orderError } = await _supabase
         .from('orders')
         .insert({
-            buyer_id: profile.id,
+            buyer_id: profile.id, // PASTIKAN INI TERISI DARI HASIL QUERY DI ATAS
             store_id: currentOrder.store_id || null,
             total_price: currentOrder.price,
             status: 'pending'
         })
-        .select() // Penting: Ambil kembali data yang baru disimpan
+        .select() 
         .single();
 
     if (orderError) {
